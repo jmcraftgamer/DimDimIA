@@ -9,6 +9,7 @@
     "start": "next start",
     "worker": "tsx src/worker/index.ts",
     "start:all": "concurrently \"npm run dev\" \"npm run worker\"",
+    "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:studio": "prisma studio"
