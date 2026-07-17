@@ -1,0 +1,231 @@
+export interface SubCategory {
+  name: string
+  queries: string[]
+}
+
+export interface CategoryGroup {
+  name: string
+  slug: string
+  subcategories: SubCategory[]
+}
+
+export const ALL_CATEGORIES: CategoryGroup[] = [
+  {
+    name: 'Eletrodomésticos',
+    slug: 'eletrodomesticos',
+    subcategories: [
+      { name: 'Geladeira', queries: ['geladeira frost free', 'refrigerador', 'geladeira inverse'] },
+      { name: 'Fogão', queries: ['fogão 4 bocas', 'fogão cooktop', 'fogão de embutir'] },
+      { name: 'Micro-ondas', queries: ['micro-ondas', 'forno microondas', 'microondas digital'] },
+      { name: 'Lavadora', queries: ['lavadora de roupas', 'máquina de lavar', 'lava e seca'] },
+      { name: 'Secadora', queries: ['secadora de roupas', 'secadora elétrica'] },
+      { name: 'Lava-Louças', queries: ['lava louças', 'máquina de lavar louça'] },
+      { name: 'Aspirador', queries: ['aspirador de pó', 'aspirador robô', 'robo aspirador'] },
+      { name: 'Cafeteira', queries: ['cafeteira elétrica', 'máquina de café', 'cafeteira expresso'] },
+      { name: 'Liquidificador', queries: ['liquidificador', 'mixer', 'centrífuga'] },
+      { name: 'Batedeira', queries: ['batedeira planetária', 'batedeira elétrica'] },
+      { name: 'Air Fryer', queries: ['air fryer', 'fritadeira elétrica', 'air fryer digital'] },
+      { name: 'Panela Elétrica', queries: ['panela elétrica', 'panela de arroz', 'multipanela'] },
+      { name: 'Purificador', queries: ['purificador de água', 'filtro de água', 'bebedouro'] },
+      { name: 'Ventilador', queries: ['ventilador de teto', 'ventilador coluna', 'ventilador pedestal'] },
+      { name: 'Climatizador', queries: ['climatizador de ar', 'condicionador de ar portátil'] },
+      { name: 'Freezer', queries: ['freezer vertical', 'freezer horizontal', 'congelador'] },
+      { name: 'Adega', queries: ['adega climatizada', 'adega de vinhos'] },
+    ],
+  },
+  {
+    name: 'Eletrônicos',
+    slug: 'eletronicos',
+    subcategories: [
+      { name: 'Notebook', queries: ['notebook', 'laptop', 'notebook core i5', 'notebook core i7'] },
+      { name: 'Tablet', queries: ['tablet android', 'tablet ipad', 'tablet samsung'] },
+      { name: 'Smartwatch', queries: ['smartwatch', 'relógio inteligente', 'apple watch', 'galaxy watch'] },
+      { name: 'TV 4K', queries: ['tv 4k 50 polegadas', 'tv 4k 55 polegadas', 'smart tv 4k'] },
+      { name: 'TV OLED', queries: ['tv oled', 'tv lg oled', 'tv samsung oled'] },
+      { name: 'Soundbar', queries: ['soundbar', 'barra de som', 'home theater'] },
+      { name: 'Caixa de Som', queries: ['caixa de som bluetooth', 'speaker portátil', 'caixa de som jbl'] },
+      { name: 'Projetor', queries: ['projetor multimídia', 'projetor 4k', 'datashow'] },
+      { name: 'Drone', queries: ['drone', 'drone com câmera', 'drone profissional'] },
+      { name: 'Roteador', queries: ['roteador wifi', 'roteador mesh', 'roteador tp-link'] },
+      { name: 'Câmera Digital', queries: ['câmera digital', 'câmera mirrorless', 'câmera canon'] },
+    ],
+  },
+  {
+    name: 'Celulares',
+    slug: 'celulares',
+    subcategories: [
+      { name: 'iPhone', queries: ['iphone 16', 'iphone 15', 'iphone 14', 'iphone 13'] },
+      { name: 'Samsung Galaxy', queries: ['samsung galaxy s25', 'samsung galaxy s24', 'galaxy a55', 'galaxy a35'] },
+      { name: 'Xiaomi', queries: ['xiaomi 14', 'xiaomi redmi note', 'xiaomi poco'] },
+      { name: 'Motorola', queries: ['motorola edge', 'motorola moto g', 'motorola razr'] },
+      { name: 'ASUS', queries: ['asus zenfone', 'asus rog phone'] },
+      { name: 'Google Pixel', queries: ['google pixel 9', 'google pixel 8'] },
+      { name: 'Realme', queries: ['realme gt', 'realme c67', 'realme narzo'] },
+      { name: 'POCO', queries: ['poco x7', 'poco f6', 'poco m6'] },
+    ],
+  },
+  {
+    name: 'Fones',
+    slug: 'fones',
+    subcategories: [
+      { name: 'Bluetooth', queries: ['fone de ouvido bluetooth', 'fone sem fio', 'fone bluetooth jbl'] },
+      { name: 'Headset Gamer', queries: ['headset gamer', 'fone gamer com microfone', 'headset razor'] },
+      { name: 'Earphone', queries: ['earphone', 'fone intra-auricular', 'fone de ouvido pequeno'] },
+      { name: 'Cancelamento de Ruído', queries: ['fone cancelamento ruído', 'fone noise cancelling', 'fone anc'] },
+      { name: 'Fone JBL', queries: ['fone jbl', 'jbl tune', 'jbl wave'] },
+      { name: 'Fone Sony', queries: ['fone sony', 'sony wh-1000', 'sony wf-1000'] },
+    ],
+  },
+  {
+    name: 'Informática',
+    slug: 'informatica',
+    subcategories: [
+      { name: 'Processador Intel', queries: ['processador intel core i5', 'processador intel core i7', 'intel core i9'] },
+      { name: 'Processador AMD', queries: ['processador amd ryzen 5', 'amd ryzen 7', 'amd ryzen 9'] },
+      { name: 'Placa de Vídeo', queries: ['placa de vídeo nvidia', 'placa de vídeo rtx', 'placa de vídeo amd'] },
+      { name: 'SSD', queries: ['ssd 1tb', 'ssd nvme', 'ssd 512gb', 'ssd externo'] },
+      { name: 'Memória RAM', queries: ['memória ram ddr5', 'memória ram ddr4', 'memória ram 32gb'] },
+      { name: 'Monitor', queries: ['monitor 27 polegadas', 'monitor 4k', 'monitor gamer', 'monitor ultrawide'] },
+      { name: 'Teclado', queries: ['teclado mecânico', 'teclado gamer', 'teclado sem fio'] },
+      { name: 'Mouse', queries: ['mouse gamer', 'mouse sem fio', 'mouse logitech'] },
+      { name: 'Gabinete', queries: ['gabinete gamer', 'gabinete mid tower', 'gabinete com fan'] },
+      { name: 'Fonte', queries: ['fonte 750w', 'fonte corsair', 'fonte modular'] },
+      { name: 'Placa-mãe', queries: ['placa mãe ddr5', 'placa mãe intel', 'placa mãe amd'] },
+      { name: 'Cooler', queries: ['cooler cpu', 'water cooler', 'cooler fan'] },
+      { name: 'HD Externo', queries: ['hd externo 2tb', 'hd externo 1tb', 'hd externo portátil'] },
+    ],
+  },
+  {
+    name: 'Games',
+    slug: 'games',
+    subcategories: [
+      { name: 'PlayStation 5', queries: ['playstation 5', 'ps5 slim', 'ps5 pro'] },
+      { name: 'Xbox Series', queries: ['xbox series x', 'xbox series s', 'xbox'] },
+      { name: 'Nintendo Switch', queries: ['nintendo switch', 'nintendo switch oled', 'nintendo switch lite'] },
+      { name: 'Jogos', queries: ['jogos ps5', 'jogos xbox', 'jogos nintendo switch'] },
+      { name: 'Controle', queries: ['controle ps5', 'controle xbox', 'controle sem fio'] },
+      { name: 'Cadeira Gamer', queries: ['cadeira gamer', 'cadeira de escritório gamer'] },
+      { name: 'Mesa Gamer', queries: ['mesa gamer', 'mesa para computador'] },
+      { name: 'Console Portátil', queries: ['console portátil', 'steam deck', 'rog ally'] },
+    ],
+  },
+  {
+    name: 'Casa',
+    slug: 'casa',
+    subcategories: [
+      { name: 'Sofá', queries: ['sofá 3 lugares', 'sofá retrátil', 'sofá cama'] },
+      { name: 'Cadeira', queries: ['cadeira de escritório', 'cadeira ergonômica', 'cadeira para sala'] },
+      { name: 'Mesa', queries: ['mesa de jantar', 'mesa redonda', 'mesa para 6 pessoas'] },
+      { name: 'Cama', queries: ['cama box', 'cama casal', 'cama solteiro', 'cama king'] },
+      { name: 'Colchão', queries: ['colchão casal', 'colchão ortopédico', 'colchão molas'] },
+      { name: 'Estante', queries: ['estante de livros', 'estante sala', 'prateleira'] },
+      { name: 'Rack', queries: ['rack para tv', 'rack sala', 'painel para tv'] },
+      { name: 'Luminária', queries: ['luminária de teto', 'abajur', 'luminária led'] },
+      { name: 'Tapete', queries: ['tapete sala', 'tapete quarto', 'capacho'] },
+      { name: 'Cortina', queries: ['cortina blackout', 'cortina sala', 'persiana'] },
+    ],
+  },
+  {
+    name: 'Moda',
+    slug: 'moda',
+    subcategories: [
+      { name: 'Tênis Masculino', queries: ['tênis masculino', 'tênis esportivo masculino', 'tênis casual masculino'] },
+      { name: 'Tênis Feminino', queries: ['tênis feminino', 'tênis esportivo feminino', 'tênis casual feminino'] },
+      { name: 'Relógio', queries: ['relógio masculino', 'relógio feminino', 'relógio digital'] },
+      { name: 'Mochila', queries: ['mochila masculina', 'mochila feminina', 'mochila notebook'] },
+      { name: 'Bolsa', queries: ['bolsa feminina', 'bolsa masculina', 'mochila bolsa'] },
+      { name: 'Camiseta', queries: ['camiseta masculina', 'camiseta feminina', 'camiseta básica'] },
+      { name: 'Calça', queries: ['calça jeans', 'calça masculina', 'calça feminina'] },
+      { name: 'Jaqueta', queries: ['jaqueta masculina', 'jaqueta feminina', 'casaco'] },
+      { name: 'Óculos de Sol', queries: ['óculos de sol', 'óculos de sol masculino', 'óculos de sol feminino'] },
+    ],
+  },
+  {
+    name: 'Beleza',
+    slug: 'beleza',
+    subcategories: [
+      { name: 'Perfume', queries: ['perfume masculino', 'perfume feminino', 'colônia'] },
+      { name: 'Maquiagem', queries: ['base maquiagem', 'batom', 'paleta de sombras', 'delineador'] },
+      { name: 'Skincare', queries: ['protetor solar', 'hidratante facial', 'sérum', 'creme anti-idade'] },
+      { name: 'Cabelo', queries: ['shampoo', 'condicionador', 'finalizador capilar', 'escova'] },
+      { name: 'Barbeador', queries: ['barbeador elétrico', 'aparador de barba', 'lâmina de barbear'] },
+      { name: 'Secador', queries: ['secador de cabelo', 'escova secadora', 'modelador de cabelo'] },
+    ],
+  },
+  {
+    name: 'Esportes',
+    slug: 'esportes',
+    subcategories: [
+      { name: 'Bicicleta', queries: ['bicicleta aro 29', 'bicicleta mountain bike', 'bicicleta speed'] },
+      { name: 'Esteira', queries: ['esteira ergométrica', 'esteira elétrica', 'esteira para casa'] },
+      { name: 'Halteres', queries: ['halteres', 'peso academia', 'kit halteres'] },
+      { name: 'Bola', queries: ['bola de futebol', 'bola de basquete', 'bola de vôlei'] },
+      { name: 'Roupa Esportiva', queries: ['roupa de academia', 'legging', 'bermuda esportiva', 'top academia'] },
+      { name: 'Tênis de Corrida', queries: ['tênis de corrida', 'tênis para academia', 'tênis de trilha'] },
+      { name: 'Suplemento', queries: ['whey protein', 'creatina', 'pré treino', 'vitaminas'] },
+    ],
+  },
+  {
+    name: 'Automotivo',
+    slug: 'automotivo',
+    subcategories: [
+      { name: 'Pneu', queries: ['pneu 185/65', 'pneu 195/55', 'pneu 205/55', 'pneu aro 15'] },
+      { name: 'Bateria', queries: ['bateria automotiva', 'bateria 60ah', 'bateria moura'] },
+      { name: 'Óleo', queries: ['óleo motor', 'óleo lubrificante', 'troca de óleo'] },
+      { name: 'Som Automotivo', queries: ['som automotivo', 'auto falante', 'subwoofer automotivo'] },
+      { name: 'Ferramentas', queries: ['kit ferramentas automotivo', 'macaco hidráulico'] },
+      { name: 'Acessórios', queries: ['cadeira de carro', 'tapete automotivo', 'organizador carro'] },
+    ],
+  },
+  {
+    name: 'Livros',
+    slug: 'livros',
+    subcategories: [
+      { name: 'Best-sellers', queries: ['livros best seller', 'livros mais vendidos', 'lançamentos livros'] },
+      { name: 'Técnicos', queries: ['livros programação', 'livros engenharia', 'livros negócios'] },
+      { name: 'Kindle', queries: ['kindle amazon', 'kindle 11ª geração', 'kindle paperwhite'] },
+      { name: 'Infantil', queries: ['livros infantil', 'livro criança', 'livro bebê'] },
+    ],
+  },
+  {
+    name: 'Ferramentas',
+    slug: 'ferramentas',
+    subcategories: [
+      { name: 'Furadeira', queries: ['furadeira elétrica', 'furadeira de impacto', 'parafusadeira'] },
+      { name: 'Serra', queries: ['serra elétrica', 'serra tico-tico', 'serra circular'] },
+      { name: 'Kit Ferramentas', queries: ['kit de ferramentas', 'maleta de ferramentas', 'jogo de chaves'] },
+      { name: 'Trena', queries: ['trena digital', 'trena laser', 'nível a laser'] },
+    ],
+  },
+  {
+    name: 'Pet',
+    slug: 'pet',
+    subcategories: [
+      { name: 'Ração', queries: ['ração cachorro', 'ração gato', 'ração premium'] },
+      { name: 'Brinquedo', queries: ['brinquedo cachorro', 'brinquedo gato', 'kit brinquedo pet'] },
+      { name: 'Cama Pet', queries: ['cama cachorro', 'cama gato', 'tapete higiênico'] },
+      { name: 'Coleira', queries: ['coleira cachorro', 'peitoral cachorro', 'guia pet'] },
+    ],
+  },
+  {
+    name: 'Bebê',
+    slug: 'bebe',
+    subcategories: [
+      { name: 'Fralda', queries: ['fralda descartável', 'fralda pampers', 'fralda huggies'] },
+      { name: 'Carrinho', queries: ['carrinho de bebê', 'carrinho infantil', 'cadeira de rodinhas'] },
+      { name: 'Berço', queries: ['berço para bebê', 'berço portátil', 'mini berço'] },
+      { name: 'Cadeirinha', queries: ['cadeirinha de carro', 'bebê conforto', 'cadeirinha infantil'] },
+      { name: 'Babá Eletrônica', queries: ['babá eletrônica', 'monitor bebê', 'baby monitor'] },
+    ],
+  },
+  {
+    name: 'Áudio e Instrumentos',
+    slug: 'audio',
+    subcategories: [
+      { name: 'Violão', queries: ['violão acústico', 'violão elétrico', 'violão iniciante'] },
+      { name: 'Guitarra', queries: ['guitarra elétrica', 'guitarra strato', 'guitarra les paul'] },
+      { name: 'Teclado', queries: ['teclado musical', 'piano elétrico', 'sintetizador'] },
+      { name: 'Microfone', queries: ['microfone karaokê', 'microfone condensador', 'microfone sem fio'] },
+    ],
+  },
+]

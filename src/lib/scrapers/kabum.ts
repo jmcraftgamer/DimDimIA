@@ -1,0 +1,50 @@
+import axios from 'axios'
+import * as cheerio from 'cheerio'
+import { ScrapedProduct } from '../../types'
+
+export async function scrapeKabum(query: string): Promise<ScrapedProduct[]> {
+  try {
+    const url = `https://www.kabum.com.br/busca/${encodeURIComponent(query)}`
+    const { data } = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept-Language': 'pt-BR,pt;q=0.9',
+      },
+      timeout: 15000,
+    })
+
+    const $ = cheerio.load(data)
+    const products: ScrapedProduct[] = []
+
+    $('.productCard, [class*="product"]').each((_, el) => {
+      const $el = $(el)
+      const name = $el.find('[class*="name"], [class*="title"], h2').first().text().trim()
+      const priceText = $el.find('[class*="price"], [class*="Price"]').first().text().trim()
+      const oldPriceText = $el.find('[class*="old"], [class*="Old"], [class*="previous"]').first().text().trim()
+      const imageUrl = $el.find('img').attr('src') || $el.find('img').attr('data-src') || ''
+      const link = $el.closest('a').attr('href') || $el.find('a').first().attr('href') || ''
+
+      const priceMatch = priceText.match(/[\d.,]+/)
+      const price = priceMatch ? parseFloat(priceMatch[0].replace(/\./g, '').replace(',', '.')) : 0
+      const oldMatch = oldPriceText.match(/[\d.,]+/)
+      const oldPrice = oldMatch ? parseFloat(oldMatch[0].replace(/\./g, '').replace(',', '.')) : undefined
+
+      if (name && price > 0) {
+        products.push({
+          name,
+          description: name,
+          price,
+          oldPrice: oldPrice && oldPrice > price ? oldPrice : undefined,
+          store: 'Kabum',
+          imageUrl: imageUrl || 'https://via.placeholder.com/200',
+          productUrl: link.startsWith('http') ? link : `https://www.kabum.com.br${link}`,
+        })
+      }
+    })
+
+    return products.slice(0, 10)
+  } catch (error) {
+    console.error('Kabum scrape error:', error)
+    return []
+  }
+}

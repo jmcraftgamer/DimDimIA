@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  name          String?
+  email         String   @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  accounts      Account[]
+  sessions      Session[]
+  monitors      Monitor[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Product {
+  id           String   @id @default(cuid())
+  name         String
+  description  String?
+  price        Float
+  oldPrice     Float?
+  coupon       String?
+  couponCode   String?
+  category     String
+  subcategory  String   @default("geral")
+  store        String
+  imageUrl     String?
+  productUrl   String
+  rating       Float?
+  totalSales   Int?
+  freeShipping Boolean?
+  tax          Float?
+  position     Int?
+  score        Float?
+  reason       String?
+  isActive     Boolean  @default(true)
+  lastVerified DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Monitor {
+  id          String   @id @default(cuid())
+  name        String
+  url         String
+  store       String
+  targetPrice Float?
+  currentPrice Float?
+  onSale      Boolean  @default(false)
+  lastChecked DateTime?
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  content   String
+  role      String
+  userId    String?
+  createdAt DateTime @default(now())
+}
+
+model WorkerLog {
+  id            String   @id @default(cuid())
+  category      String
+  subcategory   String
+  status        String
+  productsFound Int      @default(0)
+  productsSaved Int      @default(0)
+  message       String?
+  duration      Int?
+  createdAt     DateTime @default(now())
+}
+
+model CronState {
+  id                 String   @id @default("default")
+  currentCategoryIdx Int      @default(0)
+  currentSubcategoryIdx Int   @default(0)
+  currentStoreIdx    Int      @default(0)
+  currentQueryIdx    Int      @default(0)
+  cycleCount         Int      @default(0)
+  updatedAt          DateTime @updatedAt
+}
