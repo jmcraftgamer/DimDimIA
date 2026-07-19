@@ -19,10 +19,6 @@ function mapApifyML(items: any[]): ScrapedProduct[] {
 }
 
 export async function scrapeMercadoLivre(query: string): Promise<ScrapedProduct[]> {
-  const actor = APIFY_ACTORS.mercadolivre
-  const apifyItems = await runApifyActor('Mercado Livre', actor.actorId, query, actor.inputMapper, actor.costPerProduct)
-  if (apifyItems.length > 0) return mapApifyML(apifyItems)
-
   try {
     const url = `https://lista.mercadolivre.com.br/${encodeURIComponent(query)}`
     const { data } = await axios.get(url, {
@@ -79,6 +75,11 @@ export async function scrapeMercadoLivre(query: string): Promise<ScrapedProduct[
     return products.slice(0, 15)
   } catch (error) {
     console.error('Mercado Livre scrape error:', error)
-    return []
   }
+
+  const actor = APIFY_ACTORS.mercadolivre
+  const apifyItems = await runApifyActor('Mercado Livre', actor.actorId, query, actor.inputMapper, actor.costPerProduct)
+  if (apifyItems.length > 0) return mapApifyML(apifyItems)
+
+  return []
 }
