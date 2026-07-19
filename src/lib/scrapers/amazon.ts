@@ -3,21 +3,26 @@ import * as cheerio from 'cheerio'
 import { ScrapedProduct } from '../../types'
 import { runApifyActor, APIFY_ACTORS } from '../apify'
 
-const CHROME_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-  'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
-  'Accept-Encoding': 'gzip, deflate, br',
-  'Sec-Ch-Ua': '"Google Chrome";v="125", "Chromium";v="125", "Not.A/Brand";v="24"',
-  'Sec-Ch-Ua-Mobile': '?0',
-  'Sec-Ch-Ua-Platform': '"Windows"',
-  'Sec-Fetch-Dest': 'document',
-  'Sec-Fetch-Mode': 'navigate',
-  'Sec-Fetch-Site': 'none',
-  'Sec-Fetch-User': '?1',
-  'Upgrade-Insecure-Requests': '1',
-  'Dnt': '1',
-  'Referer': 'https://www.amazon.com.br/',
+const DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
+const MOBILE_UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36'
+
+function getSessionCookie(): Promise<string> {
+  return axios.get('https://www.amazon.com.br/', {
+    headers: {
+      'User-Agent': DESKTOP_UA,
+      'Accept': 'text/html,*/*',
+      'Accept-Language': 'pt-BR,pt;q=0.9',
+    },
+    timeout: 10000,
+    maxRedirects: 5,
+  }).then(res => {
+    const cookies = (res.headers['set-cookie'] || []) as string[]
+    const session = cookies
+      .filter(c => c.includes('session-id') || c.includes('session-token') || c.includes('ubid-main'))
+      .map(c => c.split(';')[0])
+      .join('; ')
+    return session
+  }).catch(() => '')
 }
 
 function parseAmazonProducts(html: string): ScrapedProduct[] {
@@ -72,17 +77,31 @@ function mapApifyAmazon(items: any[]): ScrapedProduct[] {
 }
 
 export async function scrapeAmazon(query: string): Promise<ScrapedProduct[]> {
-  const maxRetries = 2
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      if (attempt > 0) {
-        await new Promise(r => setTimeout(r, 1000 * attempt))
-      }
+  const attempts = [
+    { ua: DESKTOP_UA, label: 'desktop' },
+    { ua: MOBILE_UA, label: 'mobile' },
+  ]
 
-      const url = `https://www.amazon.com.br/s?k=${encodeURIComponent(query)}`
+  for (const attempt of attempts) {
+    try {
+      const sessionCookie = await getSessionCookie()
+      const cookie = sessionCookie || 'session-id=135-1234567-8901234; session-token=abc123'
+      const url = `https://www.amazon.com.br/s?k=${encodeURIComponent(query)}&ref=nb_sb_noss`
+
       const { data } = await axios.get(url, {
-        headers: CHROME_HEADERS,
-        timeout: 15000,
+        headers: {
+          'User-Agent': attempt.ua,
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+          'Accept-Encoding': 'gzip, deflate',
+          'Cookie': cookie,
+          'Dnt': '1',
+          'Upgrade-Insecure-Requests': '1',
+          'Referer': 'https://www.amazon.com.br/',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+        },
+        timeout: 20000,
         decompress: true,
       })
 
@@ -92,7 +111,7 @@ export async function scrapeAmazon(query: string): Promise<ScrapedProduct[]> {
       const products = parseAmazonProducts(html)
       if (products.length > 0) return products
     } catch (error) {
-      console.error(`Amazon scrape error (tentativa ${attempt + 1}):`, error)
+      console.error(`Amazon scrape error (${attempt.label}):`, error)
     }
   }
 

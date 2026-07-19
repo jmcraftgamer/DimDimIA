@@ -1,94 +1,77 @@
 import axios from 'axios'
-import * as cheerio from 'cheerio'
 import { ScrapedProduct } from '../../types'
+
+function parsePrice(price: number): number {
+  return price / 100000
+}
+
+function buildImageUrl(imageId: string): string {
+  if (!imageId) return 'https://via.placeholder.com/200'
+  if (imageId.startsWith('http')) return imageId
+  return `https://cf.shopee.com.br/file/${imageId}`
+}
+
+function buildProductUrl(shopId: number | string, itemId: number | string): string {
+  return `https://shopee.com.br/product/-.${shopId}.${itemId}`
+}
 
 export async function scrapeShopee(query: string): Promise<ScrapedProduct[]> {
   try {
-    const url = `https://shopee.com.br/search?keyword=${encodeURIComponent(query)}`
+    const url = `https://shopee.com.br/api/v4/search/search_items`
     const { data } = await axios.get(url, {
+      params: {
+        by: 'relevancy',
+        keyword: query,
+        limit: 15,
+        newest: 0,
+        order: 'desc',
+        page_type: 'search',
+        version: 2,
+      },
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept': 'application/json, text/plain, */*',
         'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Sec-Ch-Ua': '"Google Chrome";v="125", "Chromium";v="125", "Not.A/Brand";v="24"',
-        'Sec-Ch-Ua-Mobile': '?0',
-        'Sec-Ch-Ua-Platform': '"Windows"',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Upgrade-Insecure-Requests': '1',
-        'Referer': 'https://www.shopee.com.br/',
+        'Accept-Encoding': 'gzip, deflate',
+        'x-requested-with': 'XMLHttpRequest',
+        'referer': `https://shopee.com.br/search?keyword=${encodeURIComponent(query)}`,
+        'origin': 'https://shopee.com.br',
+        'sec-fetch-site': 'same-origin',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-dest': 'empty',
       },
       timeout: 15000,
     })
 
-    const $ = cheerio.load(data)
+    if (data.error !== 0 || !data.data?.items) {
+      console.error('Shopee API error:', data.error, data.error_msg)
+      return []
+    }
+
+    const items = data.data.items
     const products: ScrapedProduct[] = []
 
-    let productData: any[] = []
-    
-    $('script').each((_, el) => {
-      const text = $(el).html() || ''
-      
-      const stateMatch = text.match(/window\.__INITIAL_STATE__\s*=\s*({.+?});/)
-      if (stateMatch) {
-        try {
-          const state = JSON.parse(stateMatch[1])
-          if (state?.search?.result?.items) {
-            productData = state.search.result.items
-          }
-        } catch (e) {}
-      }
-
-      const nextMatch = text.match(/window\.__NEXT_DATA__\s*=\s*({.+?});/)
-      if (nextMatch) {
-        try {
-          const nextData = JSON.parse(nextMatch[1])
-          if (nextData?.props?.pageProps?.products) {
-            productData = nextData.props.pageProps.products
-          }
-        } catch (e) {}
-      }
-    })
-
-    $('script[type="application/ld+json"]').each((_, el) => {
-      const text = $(el).html() || ''
-      try {
-        const json = JSON.parse(text)
-        if (json['@type'] === 'ItemList' && json.itemListElement) {
-          productData = json.itemListElement.map((item: any) => ({
-            name: item.name,
-            price: item.offers?.price || 0,
-            image: item.image,
-            url: item.url,
-          }))
-        }
-      } catch (e) {}
-    })
-
-    for (const item of productData) {
-      const name = item.name || item.title || ''
-      const price = (item.price || item.price_max || 0) / 100000 || item.price || 0
-      const oldPrice = item.price_before_discount ? item.price_before_discount / 100000 : undefined
-      const image = item.image || item.images?.[0] || ''
-      const shopId = item.shopid || item.shop_id || ''
-      const itemId = item.itemid || item.item_id || ''
-      const productUrl = `https://shopee.com.br/product/-i.${shopId}.${itemId}`
+    for (const item of items) {
+      const basic = item.item_basic || item
+      const name = basic.name || ''
+      const price = parsePrice(basic.price || 0)
+      const imageId = basic.image || (basic.images && basic.images[0]) || ''
+      const shopId = basic.shopid || ''
+      const itemId = basic.itemid || ''
+      const rating = basic.item_rating?.rating_star || item.item_rating?.rating_star || undefined
+      const sold = item.sold || item.historical_sold || basic.historical_sold || undefined
 
       if (name && price > 0) {
         products.push({
           name,
           description: name,
           price,
-          oldPrice,
           store: 'Shopee',
-          imageUrl: image || 'https://via.placeholder.com/200',
-          productUrl,
-          rating: item.rating_star || item.item_rating?.rating_star || undefined,
-          totalSales: item.historical_sold || item.sold || undefined,
-          freeShipping: item.is_free_shipping || false,
+          imageUrl: buildImageUrl(imageId),
+          productUrl: buildProductUrl(shopId, itemId),
+          rating: rating ? parseFloat(rating) : undefined,
+          totalSales: sold || undefined,
+          freeShipping: basic.is_free_shipping || basic.is_on_flash_sale || false,
         })
       }
     }
