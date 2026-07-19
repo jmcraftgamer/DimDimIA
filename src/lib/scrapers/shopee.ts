@@ -1,35 +1,81 @@
 import axios from 'axios'
+import * as cheerio from 'cheerio'
 import { ScrapedProduct } from '../../types'
 
 export async function scrapeShopee(query: string): Promise<ScrapedProduct[]> {
   try {
-    const url = `https://shopee.com.br/api/v4/search/search_items?by=relevancy&keyword=${encodeURIComponent(query)}&limit=10&newest=0&order=desc&page_type=search&scenario=PAGE_GLOBAL_SEARCH&version=2`
+    const url = `https://shopee.com.br/search?keyword=${encodeURIComponent(query)}`
     const { data } = await axios.get(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept-Language': 'pt-BR,pt;q=0.9',
-        'Referer': 'https://shopee.com.br/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Sec-Ch-Ua': '"Google Chrome";v="125", "Chromium";v="125", "Not.A/Brand";v="24"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1',
+        'Referer': 'https://www.shopee.com.br/',
       },
       timeout: 15000,
     })
 
+    const $ = cheerio.load(data)
     const products: ScrapedProduct[] = []
-    const items = data?.items || []
 
-    for (const item of items) {
-      const product = item?.item_basic || item
-      if (!product) continue
+    let productData: any[] = []
+    
+    $('script').each((_, el) => {
+      const text = $(el).html() || ''
+      
+      const stateMatch = text.match(/window\.__INITIAL_STATE__\s*=\s*({.+?});/)
+      if (stateMatch) {
+        try {
+          const state = JSON.parse(stateMatch[1])
+          if (state?.search?.result?.items) {
+            productData = state.search.result.items
+          }
+        } catch (e) {}
+      }
 
-      const name = product.name || product.title || ''
-      const price = (product.price || 0) / 100000
-      const oldPrice = product.price_before_discount ? product.price_before_discount / 100000 : undefined
-      const imageId = product.image || ''
-      const shopId = product.shopid || ''
-      const itemId = product.itemid || product.item_id || ''
-      const imageUrl = imageId ? `https://down-br.img.susercontent.com/file/${imageId}` : ''
-      const productUrl = `https://shopee.com.br/${name ? encodeURIComponent(name.substring(0, 40)) : 'product'}-i.${shopId}.${itemId}`
-      const salesText = product.historical_sold || product.sold || 0
-      const rating = product.item_rating?.rating_star || product.rating_star
+      const nextMatch = text.match(/window\.__NEXT_DATA__\s*=\s*({.+?});/)
+      if (nextMatch) {
+        try {
+          const nextData = JSON.parse(nextMatch[1])
+          if (nextData?.props?.pageProps?.products) {
+            productData = nextData.props.pageProps.products
+          }
+        } catch (e) {}
+      }
+    })
+
+    $('script[type="application/ld+json"]').each((_, el) => {
+      const text = $(el).html() || ''
+      try {
+        const json = JSON.parse(text)
+        if (json['@type'] === 'ItemList' && json.itemListElement) {
+          productData = json.itemListElement.map((item: any) => ({
+            name: item.name,
+            price: item.offers?.price || 0,
+            image: item.image,
+            url: item.url,
+          }))
+        }
+      } catch (e) {}
+    })
+
+    for (const item of productData) {
+      const name = item.name || item.title || ''
+      const price = (item.price || item.price_max || 0) / 100000 || item.price || 0
+      const oldPrice = item.price_before_discount ? item.price_before_discount / 100000 : undefined
+      const image = item.image || item.images?.[0] || ''
+      const shopId = item.shopid || item.shop_id || ''
+      const itemId = item.itemid || item.item_id || ''
+      const productUrl = `https://shopee.com.br/product/-i.${shopId}.${itemId}`
 
       if (name && price > 0) {
         products.push({
@@ -38,16 +84,16 @@ export async function scrapeShopee(query: string): Promise<ScrapedProduct[]> {
           price,
           oldPrice,
           store: 'Shopee',
-          imageUrl: imageUrl || 'https://via.placeholder.com/200',
+          imageUrl: image || 'https://via.placeholder.com/200',
           productUrl,
-          rating: rating || undefined,
-          totalSales: salesText || undefined,
-          freeShipping: product.is_free_shipping || false,
+          rating: item.rating_star || item.item_rating?.rating_star || undefined,
+          totalSales: item.historical_sold || item.sold || undefined,
+          freeShipping: item.is_free_shipping || false,
         })
       }
     }
 
-    return products.slice(0, 10)
+    return products.slice(0, 15)
   } catch (error) {
     console.error('Shopee scrape error:', error)
     return []

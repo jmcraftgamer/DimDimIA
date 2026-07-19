@@ -126,3 +126,12 @@ model CronState {
   cycleCount         Int      @default(0)
   updatedAt          DateTime @updatedAt
 }
+
+model ApifyUsage {
+  id            String   @id @default(cuid())
+  actorName     String
+  productsCount Int
+  estimatedCost Float
+  month         String
+  createdAt     DateTime @default(now())
+}

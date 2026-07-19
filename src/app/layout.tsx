@@ -3,6 +3,7 @@ import { Inter, Playfair_Display } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from '../components/SessionProvider'
 import Header from '../components/Header'
+import BackgroundScraper from '../components/BackgroundScraper'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -42,6 +43,7 @@ export default function RootLayout({
               </div>
             </footer>
           </div>
+          <BackgroundScraper />
         </AuthProvider>
       </body>
     </html>
