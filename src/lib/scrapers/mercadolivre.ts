@@ -18,7 +18,7 @@ function mapApifyML(items: any[]): ScrapedProduct[] {
   })).filter((p) => p.name && p.price > 0)
 }
 
-export async function scrapeMercadoLivre(query: string): Promise<ScrapedProduct[]> {
+export async function scrapeMercadoLivre(query: string, skipApify?: boolean): Promise<ScrapedProduct[]> {
   try {
     const url = `https://lista.mercadolivre.com.br/${encodeURIComponent(query)}`
     const { data } = await axios.get(url, {

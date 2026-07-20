@@ -127,6 +127,52 @@ export async function getApifyUsageReport() {
   }
 }
 
+export async function startApifyRun(actorId: string, input: Record<string, any>): Promise<{ runId: string; datasetId: string } | null> {
+  try {
+    const apiKey = getApiKey()
+    if (!apiKey) return null
+    const url = `${APIFY_BASE}/acts/${actorId}/runs?token=${apiKey}`
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    const fullId = data.data?.id || ''
+    const runId = fullId.split('/').pop() || ''
+    return { runId, datasetId: data.data?.defaultDatasetId || '' }
+  } catch (err) {
+    console.error('[Apify] startRun error:', err)
+    return null
+  }
+}
+
+export async function checkApifyRun(actorId: string, runId: string, datasetId: string): Promise<{ status: string; items?: any[] } | null> {
+  try {
+    const apiKey = getApiKey()
+    if (!apiKey) return null
+    const statusUrl = `${APIFY_BASE}/acts/${actorId}/runs/${runId}?token=${apiKey}`
+    const res = await fetch(statusUrl)
+    if (!res.ok) return null
+    const data = await res.json()
+    const status = data.data?.status
+
+    if (status === 'SUCCEEDED' && datasetId) {
+      const itemsUrl = `${APIFY_BASE}/datasets/${datasetId}/items?token=${apiKey}&format=json&limit=15`
+      const dsRes = await fetch(itemsUrl)
+      if (!dsRes.ok) return { status }
+      const items = await dsRes.json()
+      return { status, items: Array.isArray(items) ? items : [] }
+    }
+
+    return { status }
+  } catch (err) {
+    console.error('[Apify] checkRun error:', err)
+    return null
+  }
+}
+
 export const APIFY_ACTORS = {
   amazon: {
     actorId: 'viralanalyzer~amazon-brazil-intelligence',

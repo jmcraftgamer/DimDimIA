@@ -124,6 +124,7 @@ model CronState {
   currentStoreIdx    Int      @default(0)
   currentQueryIdx    Int      @default(0)
   cycleCount         Int      @default(0)
+  pendingApifyRun    Json?
   updatedAt          DateTime @updatedAt
 }
 

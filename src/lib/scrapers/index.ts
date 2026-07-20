@@ -23,12 +23,13 @@ export const ALL_STORES = [
   { name: 'TerabyteShop', scraper: scrapeTerabyteShop },
 ] as const
 
-export async function scrapeOneStore(query: string, storeIndex: number): Promise<ScrapedProduct[]> {
+export async function scrapeOneStore(query: string, storeIndex: number, skipApify?: boolean): Promise<ScrapedProduct[]> {
   const store = ALL_STORES[storeIndex]
   if (!store) return []
   try {
-    const products = await store.scraper(query)
-    return products.map((p) => ({ ...p, store: store.name }))
+    const scraper = store.scraper as any
+    const products = scraper.length >= 2 ? await scraper(query, skipApify) : await scraper(query)
+    return products.map((p: ScrapedProduct) => ({ ...p, store: store.name }))
   } catch (err) {
     console.error(`[Scraper] Erro em ${store?.name}:`, err)
     return []
