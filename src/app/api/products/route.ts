@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
         { score: { sort: 'desc', nulls: 'last' } },
         { price: 'asc' },
       ],
-      take: 50,
+      take: 200,
     })
 
     return NextResponse.json({ products })

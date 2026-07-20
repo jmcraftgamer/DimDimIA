@@ -22,7 +22,6 @@ export default function ProductGrid({ initialCategory = '' }: ProductGridProps) 
     try {
       const params = new URLSearchParams()
       if (cat) params.set('category', cat)
-      params.set('active', 'true')
       const res = await fetch(`/api/products?${params.toString()}`)
       const data = await res.json()
       setProducts(data.products || [])
