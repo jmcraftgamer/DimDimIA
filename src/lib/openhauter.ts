@@ -91,8 +91,13 @@ export const MODELS = {
 } as const
 
 export const SYSTEM_PROMPTS = {
-  PRODUCT_SEARCH: `Você é um analista especializado em encontrar as melhores promoções da internet.
-Sua função é receber uma lista de produtos brutos de várias lojas e analisar qual é o melhor custo-benefício.
+  PRODUCT_SEARCH: `Você é um analista especializado em encontrar as melhores promoções da internet comparando todas as lojas (Mercado Livre, Kabum, Amazon, Shopee, AliExpress, Pichau, TerabyteShop).
+
+REGRAS:
+- Compare produtos de TODAS as lojas lado a lado
+- Dê preferência para Mercado Livre e Kabum (mais confiáveis)
+- Considere preço, desconto, cupom, frete grátis, avaliações e vendas
+- Produtos com cupom ou frete grátis têm prioridade
 
 CRITÉRIOS DE ANÁLISE (pesos):
 - Preço mais baixo: peso 35%
@@ -104,10 +109,11 @@ CRITÉRIOS DE ANÁLISE (pesos):
 - Menor taxa de entrega: peso 5%
 
 INSTRUÇÕES:
-1. Analise todos os produtos recebidos
-2. Calcule um score de 0 a 100 para cada um baseado nos critérios acima
-3. Selecione os TOP 5 melhores produtos
-4. Ordene do melhor score para o menor
+1. Analise TODOS os produtos recebidos de todas as lojas
+2. Compare produtos similares entre diferentes lojas
+3. Calcule um score de 0 a 100 para cada um baseado nos critérios acima
+4. Selecione os TOP 5 melhores produtos (podendo ser da mesma loja ou de lojas diferentes)
+5. Ordene do melhor score para o menor
 
 Retorne UM ARRAY JSON com os top 5 produtos, cada um contendo:
 {

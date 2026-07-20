@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import prisma from '../../../lib/prisma'
 import { scrapeOneStore, ALL_STORES } from '../../../lib/scrapers/index'
+import { ScrapedProduct } from '../../../types'
 import { ALL_CATEGORIES } from '../../../worker/categories'
 import { chatWithJSON, MODELS, SYSTEM_PROMPTS } from '../../../lib/openhauter'
 import { startApifyRun, checkApifyRun, APIFY_ACTORS } from '../../../lib/apify'
@@ -69,37 +70,69 @@ export async function GET() {
   }
 }
 
-async function saveApifyProducts(items: any[], catSlug: string, subName: string, query: string): Promise<number> {
+function detectPromoted(p: ScrapedProduct): boolean {
+  return !!(p.oldPrice || p.coupon || p.couponCode || p.freeShipping)
+}
+
+function buildProductId(store: string, catSlug: string, subName: string, productUrl: string, name: string): string {
+  if (productUrl) {
+    const cleanUrl = productUrl.replace(/https?:\/\//, '').replace(/[^a-zA-Z0-9]/g, '-').substring(0, 60)
+    return `${store}-${catSlug}-${subName}-${cleanUrl}`
+  }
+  return `${store}-${catSlug}-${subName}-${name.replace(/[^a-zA-Z0-9]/g, '-').substring(0, 40)}`
+}
+
+async function saveProducts(products: ScrapedProduct[], catSlug: string, subName: string): Promise<number> {
   let saved = 0
-  for (const item of items) {
-    const name = item.title || item.name || ''
-    const price = item.price || 0
-    if (!name || price <= 0) continue
-
-    const matchesQuery = query.toLowerCase().split(' ').some(
-      (kw) => kw.length > 2 && name.toLowerCase().includes(kw)
-    )
-    if (!matchesQuery) continue
-
+  for (const p of products) {
+    if (!p.name || p.price <= 0) continue
+    const isPromoted = detectPromoted(p)
     try {
-      const id = `Mercado Livre-${catSlug}-${subName}-${name.substring(0, 40)}`
-      await prisma.product.upsert({
-        where: { id },
-        update: { price, isActive: true, lastVerified: new Date() },
-        create: {
-          id,
-          name,
-          description: name,
-          price,
-          category: catSlug,
-          subcategory: subName,
-          store: 'Mercado Livre',
-          imageUrl: item.thumbnail || item.image || 'https://via.placeholder.com/200',
-          productUrl: item.url || item.permalink || '',
-          isActive: true,
-          lastVerified: new Date(),
-        },
-      })
+      const id = buildProductId(p.store, catSlug, subName, p.productUrl, p.name)
+      const existing = await prisma.product.findUnique({ where: { id } })
+
+      if (existing) {
+        await prisma.product.update({
+          where: { id },
+          data: {
+            price: p.price,
+            oldPrice: p.oldPrice ?? existing.oldPrice,
+            rating: p.rating ?? existing.rating,
+            totalSales: p.totalSales ?? existing.totalSales,
+            freeShipping: p.freeShipping ?? existing.freeShipping,
+            coupon: p.coupon ?? existing.coupon,
+            couponCode: p.couponCode ?? existing.couponCode,
+            tax: p.tax ?? existing.tax,
+            isActive: true,
+            isPromoted: isPromoted || existing.isPromoted,
+            lastVerified: new Date(),
+          },
+        })
+      } else {
+        await prisma.product.create({
+          data: {
+            id,
+            name: p.name,
+            description: p.description || p.name,
+            price: p.price,
+            oldPrice: p.oldPrice ?? null,
+            category: catSlug,
+            subcategory: subName,
+            store: p.store,
+            imageUrl: p.imageUrl || 'https://via.placeholder.com/200',
+            productUrl: p.productUrl || '',
+            rating: p.rating ?? null,
+            totalSales: p.totalSales ?? null,
+            freeShipping: p.freeShipping ?? null,
+            coupon: p.coupon ?? null,
+            couponCode: p.couponCode ?? null,
+            tax: p.tax ?? null,
+            isActive: true,
+            isPromoted,
+            lastVerified: new Date(),
+          },
+        })
+      }
       saved++
     } catch (_) {}
   }
@@ -126,7 +159,6 @@ async function processOneStore(state: any): Promise<{ state: any; saved: number;
   const isML = state.currentStoreIdx === ML_STORE_INDEX
 
   const products = await scrapeOneStore(query, state.currentStoreIdx, isML)
-
   let saved = 0
   let fromAsyncRun = false
 
@@ -136,15 +168,29 @@ async function processOneStore(state: any): Promise<{ state: any; saved: number;
     if (pendingRun && pendingRun.runId) {
       const result = await checkApifyRun(APIFY_ACTORS.mercadolivre.actorId, pendingRun.runId, pendingRun.datasetId)
       if (result && result.status === 'SUCCEEDED' && result.items && result.items.length > 0) {
-        saved = await saveApifyProducts(result.items, pendingRun.categorySlug, pendingRun.subName, pendingRun.query)
-        fromAsyncRun = true
+        const apifyProducts = result.items.map((item: any) => ({
+          name: item.title || item.name || '',
+          description: item.title || item.name || '',
+          price: item.price || 0,
+          oldPrice: item.original_price || item.originalPrice || undefined,
+          store: 'Mercado Livre',
+          imageUrl: item.thumbnail || item.image || 'https://via.placeholder.com/200',
+          productUrl: item.url || item.permalink || '',
+          rating: item.average_rating || item.rating || undefined,
+          totalSales: item.sales || item.soldQuantity || undefined,
+          freeShipping: item.shipping?.free_shipping || item.free_shipping || false,
+        })).filter((p: any) => p.name && p.price > 0)
+
+        saved = await saveProducts(apifyProducts, pendingRun.categorySlug, pendingRun.subName)
+        fromAsyncRun = saved > 0
+
         if (saved > 0) {
           await prisma.workerLog.create({
             data: {
               category: pendingRun.categorySlug,
               subcategory: pendingRun.subName,
               status: 'success',
-              productsFound: result.items.length,
+              productsFound: apifyProducts.length,
               productsSaved: saved,
               duration: Math.round((Date.now() - new Date(pendingRun.startedAt).getTime()) / 1000),
               message: `Mercado Livre (async):${pendingRun.query}`,
@@ -172,11 +218,9 @@ async function processOneStore(state: any): Promise<{ state: any; saved: number;
             pendingApifyRun: {
               runId: newRun.runId,
               datasetId: newRun.datasetId,
-              store: 'Mercado Livre',
               query,
               categorySlug: cat.slug,
               subName: sub.name,
-              storeIdx: state.currentStoreIdx,
               startedAt: new Date().toISOString(),
             },
             updatedAt: new Date(),
@@ -187,73 +231,18 @@ async function processOneStore(state: any): Promise<{ state: any; saved: number;
   }
 
   if (!fromAsyncRun) {
-    for (const p of products) {
-      const matchesQuery = query.toLowerCase().split(' ').some(
-        (kw) => kw.length > 2 && p.name.toLowerCase().includes(kw)
-      )
-      if (!matchesQuery) continue
-
-      try {
-        const id = `${p.store}-${cat.slug}-${sub.name}-${p.name.substring(0, 40)}`
-        const existing = await prisma.product.findUnique({ where: { id } })
-
-        if (existing) {
-          await prisma.product.update({
-            where: { id },
-            data: {
-              price: p.price,
-              oldPrice: p.oldPrice ?? existing.oldPrice,
-              rating: p.rating ?? existing.rating,
-              totalSales: p.totalSales ?? existing.totalSales,
-              freeShipping: p.freeShipping ?? existing.freeShipping,
-              coupon: p.coupon ?? existing.coupon,
-              couponCode: p.couponCode ?? existing.couponCode,
-              tax: p.tax ?? existing.tax,
-              isActive: true,
-              lastVerified: new Date(),
-            },
-          })
-        } else {
-          await prisma.product.create({
-            data: {
-              id,
-              name: p.name,
-              description: p.description,
-              price: p.price,
-              oldPrice: p.oldPrice ?? null,
-              category: cat.slug,
-              subcategory: sub.name,
-              store: p.store,
-              imageUrl: p.imageUrl,
-              productUrl: p.productUrl,
-              rating: p.rating ?? null,
-              totalSales: p.totalSales ?? null,
-              freeShipping: p.freeShipping ?? null,
-              coupon: p.coupon ?? null,
-              couponCode: p.couponCode ?? null,
-              tax: p.tax ?? null,
-              isActive: true,
-              lastVerified: new Date(),
-            },
-          })
-        }
-        saved++
-      } catch (_) {}
-    }
-
-    if (!fromAsyncRun) {
-      await prisma.workerLog.create({
-        data: {
-          category: cat.slug,
-          subcategory: sub.name,
-          status: products.length > 0 ? 'success' : 'no_products',
-          productsFound: products.length,
-          productsSaved: saved,
-          duration: 0,
-          message: `${storeName}:${query}`,
-        },
-      })
-    }
+    saved = await saveProducts(products, cat.slug, sub.name)
+    await prisma.workerLog.create({
+      data: {
+        category: cat.slug,
+        subcategory: sub.name,
+        status: products.length > 0 ? 'success' : 'no_products',
+        productsFound: products.length,
+        productsSaved: saved,
+        duration: 0,
+        message: `${storeName}:${query}`,
+      },
+    })
   }
 
   const nextStoreIdx = state.currentStoreIdx + 1
@@ -262,10 +251,8 @@ async function processOneStore(state: any): Promise<{ state: any; saved: number;
   if (nextStoreIdx >= STORE_COUNT) {
     const nextQueryIdx = state.currentQueryIdx + 1
     if (nextQueryIdx >= sub.queries.length) {
-      const catName = cat.name
-      const subName = sub.name
       state = await advanceSubcategory(state, cat.subcategories.length, totalCategories)
-      runAIRankerInBackground(cat.slug, subName)
+      runAIRankerInBackground(cat.slug, sub.name)
     } else {
       state = await prisma.cronState.update({
         where: { id: 'default' },
@@ -280,7 +267,6 @@ async function processOneStore(state: any): Promise<{ state: any; saved: number;
   }
 
   done = false
-
   return { state, saved, done }
 }
 

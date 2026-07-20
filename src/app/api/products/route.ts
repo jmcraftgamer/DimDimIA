@@ -57,10 +57,11 @@ export async function GET(request: NextRequest) {
       where,
       orderBy: [
         { isActive: 'desc' },
+        { isPromoted: 'desc' },
         { score: { sort: 'desc', nulls: 'last' } },
         { price: 'asc' },
       ],
-      take: 200,
+      take: 10000,
     })
 
     return NextResponse.json({ products })
