@@ -148,7 +148,7 @@ export default function ChatBox() {
   }
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-220px)]">
+    <div className="flex flex-col h-full">
       {messages.length === 0 && (
         <div className="text-center py-12 md:py-20 fade-in">
           <h1 className="font-display text-5xl md:text-7xl font-black gradient-text mb-3 tracking-tight">

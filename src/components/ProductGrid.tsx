@@ -1,8 +1,10 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import ProductCard from './ProductCard'
 import CategoryNav from './CategoryNav'
+
+const PAGE_SIZE = 20
 
 interface ProductGridProps {
   initialCategory?: string
@@ -11,82 +13,88 @@ interface ProductGridProps {
 export default function ProductGrid({ initialCategory = '' }: ProductGridProps) {
   const [products, setProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [category, setCategory] = useState(initialCategory)
   const [searchQuery, setSearchQuery] = useState('')
-  const [syncing, setSyncing] = useState(false)
-  const [syncStatus, setSyncStatus] = useState('')
-  const syncRef = useRef(false)
+  const [offset, setOffset] = useState(0)
+  const [total, setTotal] = useState(0)
+  const [hasMore, setHasMore] = useState(true)
+  const [initialLoaded, setInitialLoaded] = useState(false)
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
-  const fetchProducts = async (cat: string) => {
-    setLoading(true)
+  const fetchProducts = useCallback(async (cat: string, off: number, append: boolean) => {
+    if (append) {
+      setLoadingMore(true)
+    } else {
+      setLoading(true)
+    }
     try {
       const params = new URLSearchParams()
       if (cat) params.set('category', cat)
+      params.set('offset', off.toString())
+      params.set('limit', PAGE_SIZE.toString())
       const res = await fetch(`/api/products?${params.toString()}`)
       const data = await res.json()
-      setProducts(data.products || [])
+      if (append) {
+        setProducts(prev => [...prev, ...(data.products || [])])
+      } else {
+        setProducts(data.products || [])
+      }
+      setTotal(data.total || 0)
+      setHasMore((off + PAGE_SIZE) < (data.total || 0))
+      setOffset(off + PAGE_SIZE)
     } catch (error) {
       console.error('Error fetching products:', error)
     } finally {
       setLoading(false)
+      setLoadingMore(false)
+      setInitialLoaded(true)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    fetchProducts(category)
-  }, [category])
+    setProducts([])
+    setOffset(0)
+    setHasMore(true)
+    setInitialLoaded(false)
+    fetchProducts(category, 0, false)
+  }, [category, fetchProducts])
 
   useEffect(() => {
     const interval = setInterval(() => {
-      fetchProducts(category)
+      fetchProducts(category, 0, false)
     }, 15000)
     return () => clearInterval(interval)
-  }, [category])
+  }, [category, fetchProducts])
 
   useEffect(() => {
-    if (syncRef.current) return
-    syncRef.current = true
-
-    const triggerCron = async () => {
-      setSyncing(true)
-      let consecutiveEmpty = 0
-      let totalBatches = 0
-
-      while (consecutiveEmpty < 3 && totalBatches < 30) {
-        try {
-          const res = await fetch('/api/cron')
-          const data = await res.json()
-
-          totalBatches += data.batchesDone || 1
-
-          if ((data.totalSaved || 0) === 0) {
-            consecutiveEmpty++
-          } else {
-            consecutiveEmpty = 0
-            setSyncStatus(`Buscando produtos... ${data.activeProducts || 0} encontrados`)
-          }
-
-          await new Promise((r) => setTimeout(r, 500))
-        } catch {
-          consecutiveEmpty++
+    const el = sentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loadingMore && !loading) {
+          fetchProducts(category, offset, true)
         }
-      }
-
-      setSyncStatus('')
-      setSyncing(false)
-      fetchProducts(category)
-    }
-
-    triggerCron()
-  }, [category])
+      },
+      { rootMargin: '200px' }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [hasMore, loadingMore, loading, offset, category, fetchProducts])
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) return
     setLoading(true)
+    setProducts([])
+    setHasMore(false)
     try {
-      const res = await fetch(`/api/products?q=${encodeURIComponent(searchQuery)}`)
+      const res = await fetch(`/api/products?q=${encodeURIComponent(searchQuery)}&offset=0&limit=${PAGE_SIZE}`)
       const data = await res.json()
       setProducts(data.products || [])
+      setTotal(data.total || 0)
+      setHasMore((PAGE_SIZE) < (data.total || 0))
+      setOffset(PAGE_SIZE)
     } catch (error) {
       console.error('Error searching:', error)
     } finally {
@@ -94,11 +102,23 @@ export default function ProductGrid({ initialCategory = '' }: ProductGridProps) 
     }
   }
 
+  const clearSearch = () => {
+    setSearchQuery('')
+    searchInputRef.current?.focus()
+    setCategory('')
+    setProducts([])
+    setOffset(0)
+    setHasMore(true)
+    setInitialLoaded(false)
+    fetchProducts('', 0, false)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <input
+            ref={searchInputRef}
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -117,22 +137,23 @@ export default function ProductGrid({ initialCategory = '' }: ProductGridProps) 
 
       <CategoryNav active={category} onSelect={setCategory} />
 
-      {syncing && products.length === 0 && (
-        <div className="text-center py-12 fade-in">
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#f5f5f5] rounded-full text-sm text-gray-600">
-            <span className="w-2 h-2 bg-[#1a1a1a] rounded-full animate-pulse" />
-            {syncStatus || 'Fazendo busca inicial...'}
-          </div>
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-gray-400">
+          {initialLoaded && !loading
+            ? `${total} produtos encontrados`
+            : ''}
         </div>
-      )}
-
-      <div className="text-xs text-gray-400">
-        {products.length > 0
-          ? `${products.length} produtos em promoção`
-          : ''}
+        {searchQuery && (
+          <button
+            onClick={clearSearch}
+            className="text-xs text-[#1a1a1a] underline hover:no-underline"
+          >
+            Limpar busca
+          </button>
+        )}
       </div>
 
-      {loading ? (
+      {loading && products.length === 0 ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {Array.from({ length: 10 }).map((_, i) => (
             <div key={i} className="bg-[#f8f8f8] rounded-xl animate-pulse">
@@ -144,13 +165,10 @@ export default function ProductGrid({ initialCategory = '' }: ProductGridProps) 
             </div>
           ))}
         </div>
-      ) : products.length === 0 && !syncing ? (
+      ) : products.length === 0 && initialLoaded ? (
         <div className="text-center py-16">
           <p className="text-gray-400 text-lg">
-            Nenhum produto encontrado ainda.
-          </p>
-          <p className="text-gray-300 text-sm mt-2">
-            O sistema está buscando as melhores promoções. Recarregue a página em alguns segundos.
+            Nenhum produto encontrado.
           </p>
           <button
             onClick={() => window.location.reload()}
@@ -160,11 +178,25 @@ export default function ProductGrid({ initialCategory = '' }: ProductGridProps) 
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {products.map((product: any) => (
-            <ProductCard key={product.id || product.name + product.store} product={product} />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            {products.map((product: any) => (
+              <ProductCard key={product.id || product.name + product.store} product={product} />
+            ))}
+          </div>
+
+          {loadingMore && (
+            <div className="flex justify-center py-8">
+              <div className="flex gap-1.5">
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0ms]" />
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:150ms]" />
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:300ms]" />
+              </div>
+            </div>
+          )}
+
+          <div ref={sentinelRef} className="h-4" />
+        </>
       )}
     </div>
   )
