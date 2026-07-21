@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
     const query = searchParams.get('q')
     const store = searchParams.get('store')
     const offset = Math.max(0, parseInt(searchParams.get('offset') || '0'))
-    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20')))
+    const limit = Math.min(10000, Math.max(1, parseInt(searchParams.get('limit') || '500')))
 
     const where: any = { isActive: true }
     if (category) where.category = category

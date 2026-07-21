@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import ProductCard from './ProductCard'
 import CategoryNav from './CategoryNav'
 
-const PAGE_SIZE = 20
+const PAGE_SIZE = 500
 
 interface ProductGridProps {
   initialCategory?: string
