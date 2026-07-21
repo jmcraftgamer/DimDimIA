@@ -6,6 +6,8 @@ import { ScrapedProduct } from '../../../types'
 import { ALL_CATEGORIES } from '../../../worker/categories'
 import { chatWithJSON, MODELS, SYSTEM_PROMPTS } from '../../../lib/openhauter'
 import { startApifyRun, checkApifyRun, APIFY_ACTORS } from '../../../lib/apify'
+import { autoclassifyProduct, ensureCategoryPath, linkProductToCategories } from '../../../lib/categorizer'
+import { checkSeller } from '../../../lib/whitelist'
 
 export const maxDuration = 10
 export const dynamic = 'force-dynamic'
@@ -74,12 +76,39 @@ function detectPromoted(p: ScrapedProduct): boolean {
   return !!(p.oldPrice || p.coupon || p.couponCode)
 }
 
-function buildProductId(store: string, catSlug: string, subName: string, productUrl: string, name: string): string {
+function buildProductId(store: string, productUrl: string, name: string): string {
   if (productUrl) {
     const cleanUrl = productUrl.replace(/https?:\/\//, '').replace(/[^a-zA-Z0-9]/g, '-').substring(0, 60)
-    return `${store}-${catSlug}-${subName}-${cleanUrl}`
+    return `${store}-${cleanUrl}`
   }
-  return `${store}-${catSlug}-${subName}-${name.replace(/[^a-zA-Z0-9]/g, '-').substring(0, 40)}`
+  return `${store}-${name.replace(/[^a-zA-Z0-9]/g, '-').substring(0, 40)}`
+}
+
+async function saveOrGetSeller(sellerName: string, store: string): Promise<string | null> {
+  if (!sellerName || sellerName === store) return null
+  const lower = sellerName.toLowerCase()
+
+  let seller = await prisma.seller.findFirst({
+    where: { name: lower, store },
+  })
+  if (seller) return seller.id
+
+  const check = checkSeller(sellerName, store)
+  seller = await prisma.seller.create({
+    data: {
+      name: lower,
+      store,
+      isVerified: check.isSafe,
+      isKnownBrand: check.reason.includes('Marca conhecida'),
+    },
+  })
+  return seller.id
+}
+
+async function savePriceHistory(productId: string, price: number, oldPrice: number | null | undefined): Promise<void> {
+  await prisma.priceHistory.create({
+    data: { productId, price, oldPrice: oldPrice ?? null },
+  })
 }
 
 async function saveProducts(products: ScrapedProduct[], catSlug: string, subName: string): Promise<number> {
@@ -88,9 +117,15 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
     if (!p.name || p.price <= 0) continue
     const isPromoted = detectPromoted(p)
     if (!isPromoted) continue
+
     try {
-      const id = buildProductId(p.store, catSlug, subName, p.productUrl, p.name)
+      const id = buildProductId(p.store, p.productUrl, p.name)
       const existing = await prisma.product.findUnique({ where: { id } })
+
+      const [catPath, sellerId] = await Promise.all([
+        existing ? null : autoclassifyProduct(p.name, p.description).catch(() => null),
+        saveOrGetSeller(p.sellerName || p.store, p.store).catch(() => null),
+      ])
 
       if (existing) {
         await prisma.product.update({
@@ -104,13 +139,17 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
             coupon: p.coupon ?? existing.coupon,
             couponCode: p.couponCode ?? existing.couponCode,
             tax: p.tax ?? existing.tax,
+            category: catSlug,
+            subcategory: subName,
             isActive: true,
             isPromoted: isPromoted || existing.isPromoted,
+            sellerId: sellerId ?? existing.sellerId,
             lastVerified: new Date(),
           },
         })
+        await savePriceHistory(id, p.price, p.oldPrice)
       } else {
-        await prisma.product.create({
+        const product = await prisma.product.create({
           data: {
             id,
             name: p.name,
@@ -130,9 +169,16 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
             tax: p.tax ?? null,
             isActive: true,
             isPromoted,
+            sellerId: sellerId ?? null,
             lastVerified: new Date(),
           },
         })
+        await savePriceHistory(product.id, p.price, p.oldPrice)
+
+        if (catPath && catPath.length > 0) {
+          const categoryIds = await ensureCategoryPath(catPath)
+          await linkProductToCategories(product.id, categoryIds)
+        }
       }
       saved++
     } catch (_) {}

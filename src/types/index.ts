@@ -35,6 +35,7 @@ export interface ScrapedProduct {
   totalSales?: number
   freeShipping?: boolean
   tax?: number
+  sellerName?: string
 }
 
 export interface ChatMessage {

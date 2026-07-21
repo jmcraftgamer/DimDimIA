@@ -56,8 +56,47 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
-model Product {
+model Category {
+  id        String            @id @default(cuid())
+  name      String
+  slug      String
+  parentId  String?
+  parent    Category?         @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children  Category[]        @relation("CategoryHierarchy")
+  products  ProductCategory[]
+  createdAt DateTime          @default(now())
+}
+
+model ProductCategory {
+  productId  String
+  categoryId String
+  product    Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  category   Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  @@id([productId, categoryId])
+}
+
+model Seller {
   id           String   @id @default(cuid())
+  name         String
+  store        String
+  isVerified   Boolean  @default(false)
+  isKnownBrand Boolean  @default(false)
+  lastChecked  DateTime @default(now())
+  products     Product[]
+  createdAt    DateTime @default(now())
+}
+
+model PriceHistory {
+  id        String   @id @default(cuid())
+  productId String
+  price     Float
+  oldPrice  Float?
+  date      DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model Product {
+  id           String            @id @default(cuid())
   name         String
   description  String?
   price        Float
@@ -65,7 +104,7 @@ model Product {
   coupon       String?
   couponCode   String?
   category     String
-  subcategory  String   @default("geral")
+  subcategory  String            @default("geral")
   store        String
   imageUrl     String?
   productUrl   String
@@ -76,11 +115,16 @@ model Product {
   position     Int?
   score        Float?
   reason       String?
-  isActive     Boolean  @default(true)
-  isPromoted   Boolean  @default(false)
-  lastVerified DateTime @default(now())
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  isActive     Boolean           @default(true)
+  isPromoted   Boolean           @default(false)
+  reviewsJson  Json?
+  sellerId     String?
+  seller       Seller?           @relation(fields: [sellerId], references: [id])
+  categories   ProductCategory[]
+  priceHistory PriceHistory[]
+  lastVerified DateTime          @default(now())
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
 }
 
 model Monitor {
