@@ -71,7 +71,7 @@ export async function GET() {
 }
 
 function detectPromoted(p: ScrapedProduct): boolean {
-  return !!(p.oldPrice || p.coupon || p.couponCode || p.freeShipping)
+  return !!(p.oldPrice || p.coupon || p.couponCode)
 }
 
 function buildProductId(store: string, catSlug: string, subName: string, productUrl: string, name: string): string {
@@ -87,6 +87,7 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
   for (const p of products) {
     if (!p.name || p.price <= 0) continue
     const isPromoted = detectPromoted(p)
+    if (!isPromoted) continue
     try {
       const id = buildProductId(p.store, catSlug, subName, p.productUrl, p.name)
       const existing = await prisma.product.findUnique({ where: { id } })
