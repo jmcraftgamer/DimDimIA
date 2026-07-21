@@ -116,14 +116,13 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
   for (const p of products) {
     if (!p.name || p.price <= 0) continue
     const isPromoted = detectPromoted(p)
-    if (!isPromoted) continue
 
     try {
       const id = buildProductId(p.store, p.productUrl, p.name)
       const existing = await prisma.product.findUnique({ where: { id } })
 
       const [catPath, sellerId] = await Promise.all([
-        existing ? null : autoclassifyProduct(p.name, p.description).catch(() => null),
+        existing || !isPromoted ? null : autoclassifyProduct(p.name, p.description).catch(() => null),
         saveOrGetSeller(p.sellerName || p.store, p.store).catch(() => null),
       ])
 
