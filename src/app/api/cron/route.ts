@@ -187,7 +187,7 @@ export async function GET() {
       return 0
     })
 
-    const mlStartPromises = aliQueries.map(async ({ query, subName, catSlug }) => {
+    const mlStartPromises = aliQueries.slice(0, 2).map(async ({ query, subName, catSlug }) => {
       const newRun = await startApifyRun(APIFY_ACTORS.mercadolivre.actorId, APIFY_ACTORS.mercadolivre.inputMapper(query))
       if (newRun && newRun.runId) {
         return { runId: newRun.runId, datasetId: newRun.datasetId, catSlug, subName, query, startedAt: new Date().toISOString() }
