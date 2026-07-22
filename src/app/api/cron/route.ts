@@ -4,7 +4,6 @@ import prisma from '../../../lib/prisma'
 import { scrapeOneStore, ALL_STORES } from '../../../lib/scrapers/index'
 import { ScrapedProduct } from '../../../types'
 import { ALL_CATEGORIES } from '../../../worker/categories'
-import { chatWithJSON, MODELS, SYSTEM_PROMPTS } from '../../../lib/openhauter'
 import { startApifyRun, checkApifyRun, APIFY_ACTORS } from '../../../lib/apify'
 import { autoclassifyProduct, ensureCategoryPath, linkProductToCategories } from '../../../lib/categorizer'
 import { checkSeller } from '../../../lib/whitelist'
@@ -12,70 +11,8 @@ import { checkSeller } from '../../../lib/whitelist'
 export const maxDuration = 10
 export const dynamic = 'force-dynamic'
 
-const STORE_COUNT = ALL_STORES.length
 const MAX_BATCH_MS = 8000
-
 const ML_STORE_INDEX = 0
-
-interface RankedProduct {
-  name: string
-  price: number
-  oldPrice?: number
-  store: string
-  imageUrl: string
-  productUrl: string
-  rating?: number
-  totalSales?: number
-  freeShipping?: boolean
-  coupon?: string
-  couponCode?: string
-  tax?: number
-  score: number
-  reason: string
-}
-
-export async function GET() {
-  const startTime = Date.now()
-  let batchesDone = 0
-  let totalSaved = 0
-
-  try {
-    await prisma.product.updateMany({
-      where: { isPromoted: false },
-      data: { isActive: false },
-    })
-
-    let state = await prisma.cronState.findUnique({ where: { id: 'default' } })
-    if (!state) {
-      state = await prisma.cronState.create({ data: { id: 'default' } })
-    }
-
-    while (Date.now() - startTime < MAX_BATCH_MS) {
-      const result = await processOneStore(state)
-      state = result.state
-      totalSaved += result.saved
-      batchesDone++
-
-      if (result.done) break
-    }
-
-    const activeProducts = await prisma.product.count({ where: { isActive: true } })
-
-    return NextResponse.json({
-      success: true,
-      batchesDone,
-      totalSaved,
-      activeProducts,
-      elapsedMs: Date.now() - startTime,
-    })
-  } catch (error: any) {
-    return NextResponse.json({
-      success: false,
-      error: error.message,
-      elapsedMs: Date.now() - startTime,
-    })
-  }
-}
 
 function detectPromoted(p: ScrapedProduct): boolean {
   return !!(p.oldPrice || p.coupon || p.couponCode)
@@ -118,15 +55,14 @@ async function savePriceHistory(productId: string, price: number, oldPrice: numb
 
 async function saveProducts(products: ScrapedProduct[], catSlug: string, subName: string): Promise<number> {
   let saved = 0
-  const nonPromoted: { product: ScrapedProduct; score: number }[] = []
+  const nonPromoted: ScrapedProduct[] = []
 
   for (const p of products) {
     if (!p.name || p.price <= 0) continue
     const isPromoted = detectPromoted(p)
 
     if (!isPromoted) {
-      const score = (p.totalSales || 0) * 10 + (p.rating || 0)
-      nonPromoted.push({ product: p, score })
+      nonPromoted.push(p)
       continue
     }
 
@@ -198,8 +134,8 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
   }
 
   if (nonPromoted.length > 0) {
-    nonPromoted.sort((a, b) => b.score - a.score || a.product.price - b.product.price)
-    const best = nonPromoted[0].product
+    nonPromoted.sort((a, b) => a.price - b.price)
+    const best = nonPromoted[0]
     try {
       const id = buildProductId(best.store, best.productUrl, best.name)
       const existing = await prisma.product.findUnique({ where: { id } })
@@ -252,234 +188,131 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
   return saved
 }
 
-async function processOneStore(state: any): Promise<{ state: any; saved: number; done: boolean }> {
-  const totalCategories = ALL_CATEGORIES.length
-  const cat = ALL_CATEGORIES[state.currentCategoryIdx % totalCategories]
-
-  if (!cat || cat.subcategories.length === 0) {
-    state = await resetState(state)
-    return { state, saved: 0, done: false }
-  }
-
-  const sub = cat.subcategories[state.currentSubcategoryIdx % cat.subcategories.length]
-  if (!sub || sub.queries.length === 0) {
-    state = await advanceSubcategory(state, cat.subcategories.length, totalCategories)
-    return { state, saved: 0, done: false }
-  }
-
-  const storeName = ALL_STORES[state.currentStoreIdx]?.name || ''
-  const query = sub.queries[state.currentQueryIdx % sub.queries.length]
-  const isML = state.currentStoreIdx === ML_STORE_INDEX
-
-  const products = await scrapeOneStore(query, state.currentStoreIdx, isML)
-  let saved = 0
-  let fromAsyncRun = false
-
-  if (products.length === 0 && isML) {
-    const pendingRun = state.pendingApifyRun as any
-
-    if (pendingRun && pendingRun.runId) {
-      const result = await checkApifyRun(APIFY_ACTORS.mercadolivre.actorId, pendingRun.runId, pendingRun.datasetId)
-      if (result && result.status === 'SUCCEEDED' && result.items && result.items.length > 0) {
-        const apifyProducts = result.items.map((item: any) => ({
-          name: item.title || item.name || '',
-          description: item.title || item.name || '',
-          price: item.price || 0,
-          oldPrice: item.original_price || item.originalPrice || undefined,
-          store: 'Mercado Livre',
-          imageUrl: item.thumbnail || item.image || 'https://via.placeholder.com/200',
-          productUrl: item.url || item.permalink || '',
-          rating: item.average_rating || item.rating || undefined,
-          totalSales: item.sales || item.soldQuantity || undefined,
-          freeShipping: item.shipping?.free_shipping || item.free_shipping || false,
-          inStock: item.available !== false && item.stock !== 0,
-        })).filter((p: any) => p.name && p.price > 0)
-
-        saved = await saveProducts(apifyProducts, pendingRun.categorySlug, pendingRun.subName)
-        fromAsyncRun = saved > 0
-
-        if (saved > 0) {
-          await prisma.workerLog.create({
-            data: {
-              category: pendingRun.categorySlug,
-              subcategory: pendingRun.subName,
-              status: 'success',
-              productsFound: apifyProducts.length,
-              productsSaved: saved,
-              duration: Math.round((Date.now() - new Date(pendingRun.startedAt).getTime()) / 1000),
-              message: `Mercado Livre (async):${pendingRun.query}`,
-            },
-          })
-        }
-        state = await prisma.cronState.update({
-          where: { id: 'default' },
-          data: { pendingApifyRun: Prisma.JsonNull, updatedAt: new Date() },
-        })
-      } else if (result && (result.status === 'FAILED' || result.status === 'TIMED-OUT' || result.status === 'ABORTED')) {
-        state = await prisma.cronState.update({
-          where: { id: 'default' },
-          data: { pendingApifyRun: Prisma.JsonNull, updatedAt: new Date() },
-        })
+function buildJobList() {
+  const jobs: { catSlug: string; catName: string; subName: string; query: string }[] = []
+  for (const cat of ALL_CATEGORIES) {
+    for (const sub of cat.subcategories) {
+      for (const query of sub.queries) {
+        jobs.push({ catSlug: cat.slug, catName: cat.name, subName: sub.name, query })
       }
     }
+  }
+  return jobs
+}
 
-    if (!state.pendingApifyRun) {
-      const newRun = await startApifyRun(APIFY_ACTORS.mercadolivre.actorId, APIFY_ACTORS.mercadolivre.inputMapper(query))
+async function processJob(job: { catSlug: string; catName: string; subName: string; query: string }): Promise<number> {
+  let totalSaved = 0
+
+  const storePromises = ALL_STORES.map(async (store, storeIdx) => {
+    const isML = storeIdx === ML_STORE_INDEX
+    const products = await scrapeOneStore(job.query, storeIdx, isML)
+
+    if (products.length === 0 && isML) {
+      const newRun = await startApifyRun(APIFY_ACTORS.mercadolivre.actorId, APIFY_ACTORS.mercadolivre.inputMapper(job.query))
       if (newRun && newRun.runId) {
-        state = await prisma.cronState.update({
-          where: { id: 'default' },
-          data: {
-            pendingApifyRun: {
-              runId: newRun.runId,
-              datasetId: newRun.datasetId,
-              query,
-              categorySlug: cat.slug,
-              subName: sub.name,
-              startedAt: new Date().toISOString(),
-            },
-            updatedAt: new Date(),
-          },
-        })
+        const result = await checkApifyRun(APIFY_ACTORS.mercadolivre.actorId, newRun.runId, newRun.datasetId)
+        if (result && result.status === 'SUCCEEDED' && result.items) {
+          const apifyProducts = result.items.map((item: any) => ({
+            name: item.title || item.name || '',
+            description: item.title || item.name || '',
+            price: item.price || 0,
+            oldPrice: item.original_price || item.originalPrice || undefined,
+            store: 'Mercado Livre',
+            imageUrl: item.thumbnail || item.image || 'https://via.placeholder.com/200',
+            productUrl: item.url || item.permalink || '',
+            rating: item.average_rating || item.rating || undefined,
+            totalSales: item.sales || item.soldQuantity || undefined,
+            freeShipping: item.shipping?.free_shipping || item.free_shipping || false,
+            inStock: item.available !== false && item.stock !== 0,
+          })).filter((p: any) => p.name && p.price > 0)
+          if (apifyProducts.length > 0) {
+            const saved = await saveProducts(apifyProducts, job.catSlug, job.subName)
+            totalSaved += saved
+          }
+        }
       }
     }
-  }
 
-  if (!fromAsyncRun) {
-    saved = await saveProducts(products, cat.slug, sub.name)
-    await prisma.workerLog.create({
-      data: {
-        category: cat.slug,
-        subcategory: sub.name,
-        status: products.length > 0 ? 'success' : 'no_products',
-        productsFound: products.length,
-        productsSaved: saved,
-        duration: 0,
-        message: `${storeName}:${query}`,
-      },
+    if (products.length > 0) {
+      const saved = await saveProducts(products, job.catSlug, job.subName)
+      totalSaved += saved
+    }
+  })
+
+  await Promise.allSettled(storePromises)
+  return totalSaved
+}
+
+export async function GET() {
+  const startTime = Date.now()
+  let totalSaved = 0
+  let processedJobs = 0
+
+  try {
+    await prisma.product.updateMany({
+      where: { isPromoted: false },
+      data: { isActive: false },
     })
-  }
 
-  const nextStoreIdx = state.currentStoreIdx + 1
-  let done = false
+    let state = await prisma.cronState.findUnique({ where: { id: 'default' } })
+    if (!state) {
+      state = await prisma.cronState.create({ data: { id: 'default' } })
+    }
 
-  if (nextStoreIdx >= STORE_COUNT) {
-    const nextQueryIdx = state.currentQueryIdx + 1
-    if (nextQueryIdx >= sub.queries.length) {
-      state = await advanceSubcategory(state, cat.subcategories.length, totalCategories)
-      runAIRankerInBackground(cat.slug, sub.name)
-    } else {
-      state = await prisma.cronState.update({
-        where: { id: 'default' },
-        data: { currentStoreIdx: 0, currentQueryIdx: nextQueryIdx, updatedAt: new Date() },
+    if (state.pendingApifyRun && typeof state.pendingApifyRun === 'object' && 'seeded' in (state.pendingApifyRun as any) && (state.pendingApifyRun as any).seeded) {
+      return NextResponse.json({
+        success: true,
+        seeded: true,
+        message: 'Full scan already completed. Daily maintenance only.',
+        elapsedMs: Date.now() - startTime,
       })
     }
-  } else {
-    state = await prisma.cronState.update({
-      where: { id: 'default' },
-      data: { currentStoreIdx: nextStoreIdx, updatedAt: new Date() },
-    })
-  }
 
-  done = false
-  return { state, saved, done }
-}
+    const allJobs = buildJobList()
+    let jobIdx: number
 
-async function advanceSubcategory(state: any, subLen: number, catLen: number) {
-  const nextSubIdx = (state.currentSubcategoryIdx + 1) % subLen
-  let nextCatIdx = state.currentCategoryIdx
-  let resetSub = false
-
-  if (nextSubIdx === 0 && subLen > 0) {
-    nextCatIdx = (state.currentCategoryIdx + 1) % catLen
-    resetSub = true
-  }
-
-  const newCycle = nextCatIdx === 0 && resetSub ? state.cycleCount + 1 : state.cycleCount
-
-  return prisma.cronState.update({
-    where: { id: 'default' },
-    data: {
-      currentCategoryIdx: nextCatIdx,
-      currentSubcategoryIdx: resetSub ? 0 : nextSubIdx,
-      currentStoreIdx: 0,
-      currentQueryIdx: 0,
-      cycleCount: newCycle,
-      updatedAt: new Date(),
-    },
-  })
-}
-
-async function resetState(state: any) {
-  return prisma.cronState.update({
-    where: { id: 'default' },
-    data: {
-      currentCategoryIdx: (state.currentCategoryIdx + 1) % ALL_CATEGORIES.length,
-      currentSubcategoryIdx: 0,
-      currentStoreIdx: 0,
-      currentQueryIdx: 0,
-      updatedAt: new Date(),
-    },
-  })
-}
-
-async function runAIRankerInBackground(categorySlug: string, subcategoryName: string) {
-  try {
-    const products = await prisma.product.findMany({
-      where: { category: categorySlug, subcategory: subcategoryName, isActive: true },
-      orderBy: { price: 'asc' },
-      take: 30,
-    })
-    if (products.length < 2) return
-
-    const cat = ALL_CATEGORIES.find((c) => c.slug === categorySlug)
-    const catName = cat?.name || categorySlug
-
-    const productsJSON = JSON.stringify(
-      products.map((p) => ({
-        name: p.name,
-        price: p.price,
-        oldPrice: p.oldPrice,
-        store: p.store,
-        rating: p.rating,
-        totalSales: p.totalSales,
-        freeShipping: p.freeShipping,
-        coupon: p.coupon,
-        tax: p.tax,
-      }))
-    )
-
-    const result = await chatWithJSON<RankedProduct[]>(
-      MODELS.PRODUCT_SEARCH,
-      [{ role: 'user', content: `Analise e retorne TOP 5:\n\n${productsJSON}` }],
-      `${SYSTEM_PROMPTS.PRODUCT_SEARCH}\n\nCATEGORIA: ${catName}\nSUBCATEGORIA: ${subcategoryName}`
-    )
-
-    if (!result || !Array.isArray(result) || result.length === 0) return
-
-    for (let i = 0; i < result.length; i++) {
-      const r = result[i]
-      const existing = products.find(
-        (p) =>
-          (r.name && p.name.includes(r.name.substring(0, 30))) ||
-          (r.store && p.store === r.store && p.name.includes(r.name?.substring(0, 20) || ''))
-      )
-      if (existing) {
-        await prisma.product.update({
-          where: { id: existing.id },
-          data: {
-            score: r.score ?? 100 - i * 20,
-            reason: r.reason || null,
-            position: i + 1,
-            isActive: true,
-            price: r.price ?? existing.price,
-            oldPrice: r.oldPrice ?? existing.oldPrice,
-            freeShipping: r.freeShipping ?? existing.freeShipping,
-            coupon: r.coupon ?? existing.coupon,
-            couponCode: r.couponCode ?? existing.couponCode,
-            lastVerified: new Date(),
-          },
-        })
-      }
+    if (state.pendingApifyRun && typeof state.pendingApifyRun === 'object' && 'jobIdx' in (state.pendingApifyRun as any)) {
+      jobIdx = (state.pendingApifyRun as any).jobIdx
+    } else {
+      jobIdx = 0
     }
-  } catch (_) {}
+
+    while (Date.now() - startTime < MAX_BATCH_MS && jobIdx < allJobs.length) {
+      const job = allJobs[jobIdx]
+      const saved = await processJob(job)
+      totalSaved += saved
+      processedJobs++
+      jobIdx++
+
+      await prisma.cronState.update({
+        where: { id: 'default' },
+        data: { pendingApifyRun: { jobIdx }, updatedAt: new Date() },
+      })
+    }
+
+    const activeProducts = await prisma.product.count({ where: { isActive: true } })
+
+    if (jobIdx >= allJobs.length) {
+      await prisma.cronState.update({
+        where: { id: 'default' },
+        data: { pendingApifyRun: { seeded: true, jobIdx }, updatedAt: new Date() },
+      })
+    }
+
+    return NextResponse.json({
+      success: true,
+      seeded: jobIdx >= allJobs.length,
+      progress: `${jobIdx}/${allJobs.length}`,
+      processedJobs,
+      totalSaved,
+      activeProducts,
+      elapsedMs: Date.now() - startTime,
+    })
+  } catch (error: any) {
+    return NextResponse.json({
+      success: false,
+      error: error.message,
+      elapsedMs: Date.now() - startTime,
+    })
+  }
 }
