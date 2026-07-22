@@ -190,7 +190,6 @@ export async function scrapeMLByCategory(
       const data: MLBResponse = await res.json()
       const items = data.results || []
       totalItems += items.length
-      const totalFromAPI = data.paging?.total || 0
 
       for (const item of items) {
         const oldPrice = extractOldPrice(item)
