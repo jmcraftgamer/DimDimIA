@@ -141,25 +141,32 @@ export async function scrapeKabum(query: string): Promise<ScrapedProduct[]> {
     const catUrl = findCategoryUrl(query)
 
     if (catUrl) {
-      // Scrape multiple pages for category URLs
-      const allProducts: ScrapedProduct[] = []
       const MAX_PAGES = 50
+      const BATCH_SIZE = 3
+      const allProducts: ScrapedProduct[] = []
 
-      for (let page = 1; page <= MAX_PAGES; page++) {
-        const url = page === 1
-          ? `https://www.kabum.com.br/${catUrl}`
-          : `https://www.kabum.com.br/${catUrl}?page_number=${page}`
+      for (let batchStart = 1; batchStart <= MAX_PAGES; batchStart += BATCH_SIZE) {
+        const batchEnd = Math.min(batchStart + BATCH_SIZE - 1, MAX_PAGES)
+        const pages = Array.from({ length: batchEnd - batchStart + 1 }, (_, i) => batchStart + i)
 
-        try {
-          const { data } = await axios.get(url, { headers: HEADERS, timeout: 8000 })
-          const products = parsePage(data)
+        const results = await Promise.allSettled(
+          pages.map(page => {
+            const url = page === 1
+              ? `https://www.kabum.com.br/${catUrl}`
+              : `https://www.kabum.com.br/${catUrl}?page_number=${page}`
+            return axios.get(url, { headers: HEADERS, timeout: 8000 }).then(res => parsePage(res.data))
+          })
+        )
 
-          if (products.length === 0) break
-
-          allProducts.push(...products)
-        } catch {
-          break
+        let anyData = false
+        for (const result of results) {
+          if (result.status === 'fulfilled' && result.value.length > 0) {
+            allProducts.push(...result.value)
+            anyData = true
+          }
         }
+
+        if (!anyData) break
       }
 
       return allProducts
