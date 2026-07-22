@@ -142,7 +142,7 @@ export async function scrapeKabum(query: string): Promise<ScrapedProduct[]> {
 
     if (catUrl) {
       const MAX_PAGES = 50
-      const BATCH_SIZE = 3
+      const BATCH_SIZE = 6
       const allProducts: ScrapedProduct[] = []
 
       for (let batchStart = 1; batchStart <= MAX_PAGES; batchStart += BATCH_SIZE) {

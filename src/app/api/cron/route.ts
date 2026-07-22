@@ -11,7 +11,7 @@ import { checkSeller } from '../../../lib/whitelist'
 export const maxDuration = 10
 export const dynamic = 'force-dynamic'
 
-const MAX_BATCH_MS = 8000
+const MAX_BATCH_MS = 9000
 const ML_STORE_INDEX = 0
 
 function detectPromoted(p: ScrapedProduct): boolean {
@@ -29,49 +29,31 @@ function buildProductId(store: string, productUrl: string, name: string): string
 async function saveOrGetSeller(sellerName: string, store: string): Promise<string | null> {
   if (!sellerName || sellerName === store) return null
   const lower = sellerName.toLowerCase()
-
-  let seller = await prisma.seller.findFirst({
-    where: { name: lower, store },
-  })
+  let seller = await prisma.seller.findFirst({ where: { name: lower, store } })
   if (seller) return seller.id
-
   const check = checkSeller(sellerName, store)
   seller = await prisma.seller.create({
-    data: {
-      name: lower,
-      store,
-      isVerified: check.isSafe,
-      isKnownBrand: check.reason.includes('Marca conhecida'),
-    },
+    data: { name: lower, store, isVerified: check.isSafe, isKnownBrand: check.reason.includes('Marca conhecida') },
   })
   return seller.id
 }
 
 async function savePriceHistory(productId: string, price: number, oldPrice: number | null | undefined): Promise<void> {
-  await prisma.priceHistory.create({
-    data: { productId, price, oldPrice: oldPrice ?? null },
-  })
+  await prisma.priceHistory.create({ data: { productId, price, oldPrice: oldPrice ?? null } })
 }
 
 async function saveProducts(products: ScrapedProduct[], catSlug: string, subName: string): Promise<number> {
   let saved = 0
-  const nonPromoted: ScrapedProduct[] = []
-
   for (const p of products) {
     if (!p.name || p.price <= 0) continue
     const isPromoted = detectPromoted(p)
-
-    if (!isPromoted) {
-      nonPromoted.push(p)
-      continue
-    }
 
     try {
       const id = buildProductId(p.store, p.productUrl, p.name)
       const existing = await prisma.product.findUnique({ where: { id } })
 
       const [catPath, sellerId] = await Promise.all([
-        existing ? null : autoclassifyProduct(p.name, p.description).catch(() => null),
+        existing || !isPromoted ? null : autoclassifyProduct(p.name, p.description).catch(() => null),
         saveOrGetSeller(p.sellerName || p.store, p.store).catch(() => null),
       ])
 
@@ -90,7 +72,7 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
             category: catSlug,
             subcategory: subName,
             isActive: p.inStock !== false,
-            isPromoted: true,
+            isPromoted: isPromoted || existing.isPromoted,
             sellerId: sellerId ?? existing.sellerId,
             lastVerified: new Date(),
           },
@@ -116,7 +98,7 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
             couponCode: p.couponCode ?? null,
             tax: p.tax ?? null,
             isActive: p.inStock !== false,
-            isPromoted: true,
+            isPromoted,
             inStock: p.inStock !== false,
             sellerId: sellerId ?? null,
             lastVerified: new Date(),
@@ -132,59 +114,6 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
       saved++
     } catch (_) {}
   }
-
-  if (nonPromoted.length > 0) {
-    nonPromoted.sort((a, b) => a.price - b.price)
-    const best = nonPromoted[0]
-    try {
-      const id = buildProductId(best.store, best.productUrl, best.name)
-      const existing = await prisma.product.findUnique({ where: { id } })
-      if (existing && existing.isPromoted) return saved
-
-      if (existing) {
-        await prisma.product.update({
-          where: { id },
-          data: {
-            price: best.price,
-            rating: best.rating ?? existing.rating,
-            totalSales: best.totalSales ?? existing.totalSales,
-            freeShipping: best.freeShipping ?? existing.freeShipping,
-            category: catSlug,
-            subcategory: subName,
-            isActive: best.inStock !== false,
-            isPromoted: false,
-            lastVerified: new Date(),
-          },
-        })
-      } else {
-        await prisma.product.create({
-          data: {
-            id,
-            name: best.name,
-            description: best.description || best.name,
-            price: best.price,
-            oldPrice: best.oldPrice ?? null,
-            category: catSlug,
-            subcategory: subName,
-            store: best.store,
-            imageUrl: best.imageUrl || 'https://via.placeholder.com/200',
-            productUrl: best.productUrl || '',
-            rating: best.rating ?? null,
-            totalSales: best.totalSales ?? null,
-            freeShipping: best.freeShipping ?? null,
-            coupon: best.coupon ?? null,
-            couponCode: best.couponCode ?? null,
-            tax: best.tax ?? null,
-            isActive: best.inStock !== false,
-            isPromoted: false,
-            inStock: best.inStock !== false,
-            lastVerified: new Date(),
-          },
-        })
-      }
-    } catch (_) {}
-  }
-
   return saved
 }
 
@@ -192,8 +121,12 @@ function buildJobList() {
   const jobs: { catSlug: string; catName: string; subName: string; query: string }[] = []
   for (const cat of ALL_CATEGORIES) {
     for (const sub of cat.subcategories) {
+      const unique = new Set<string>()
       for (const query of sub.queries) {
-        jobs.push({ catSlug: cat.slug, catName: cat.name, subName: sub.name, query })
+        if (!unique.has(query)) {
+          unique.add(query)
+          jobs.push({ catSlug: cat.slug, catName: cat.name, subName: sub.name, query })
+        }
       }
     }
   }
@@ -203,7 +136,7 @@ function buildJobList() {
 async function processJob(job: { catSlug: string; catName: string; subName: string; query: string }): Promise<number> {
   let totalSaved = 0
 
-  const storePromises = ALL_STORES.map(async (store, storeIdx) => {
+  const storePromises = ALL_STORES.map(async (_, storeIdx) => {
     const isML = storeIdx === ML_STORE_INDEX
     const products = await scrapeOneStore(job.query, storeIdx, isML)
 
@@ -226,16 +159,14 @@ async function processJob(job: { catSlug: string; catName: string; subName: stri
             inStock: item.available !== false && item.stock !== 0,
           })).filter((p: any) => p.name && p.price > 0)
           if (apifyProducts.length > 0) {
-            const saved = await saveProducts(apifyProducts, job.catSlug, job.subName)
-            totalSaved += saved
+            totalSaved += await saveProducts(apifyProducts, job.catSlug, job.subName)
           }
         }
       }
     }
 
     if (products.length > 0) {
-      const saved = await saveProducts(products, job.catSlug, job.subName)
-      totalSaved += saved
+      totalSaved += await saveProducts(products, job.catSlug, job.subName)
     }
   })
 
@@ -249,37 +180,27 @@ export async function GET() {
   let processedJobs = 0
 
   try {
-    await prisma.product.updateMany({
-      where: { isPromoted: false },
-      data: { isActive: false },
-    })
-
     let state = await prisma.cronState.findUnique({ where: { id: 'default' } })
     if (!state) {
       state = await prisma.cronState.create({ data: { id: 'default' } })
     }
 
-    if (state.pendingApifyRun && typeof state.pendingApifyRun === 'object' && 'seeded' in (state.pendingApifyRun as any) && (state.pendingApifyRun as any).seeded) {
-      return NextResponse.json({
-        success: true,
-        seeded: true,
-        message: 'Full scan already completed. Daily maintenance only.',
-        elapsedMs: Date.now() - startTime,
-      })
-    }
-
     const allJobs = buildJobList()
-    let jobIdx: number
-
-    if (state.pendingApifyRun && typeof state.pendingApifyRun === 'object' && 'jobIdx' in (state.pendingApifyRun as any)) {
-      jobIdx = (state.pendingApifyRun as any).jobIdx
-    } else {
-      jobIdx = 0
+    let jobIdx = 0
+    if (state.pendingApifyRun && typeof state.pendingApifyRun === 'object') {
+      const p = state.pendingApifyRun as any
+      if (p.seeded) {
+        return NextResponse.json({
+          success: true, seeded: true,
+          activeProducts: await prisma.product.count({ where: { isActive: true } }),
+          elapsedMs: Date.now() - startTime,
+        })
+      }
+      if (typeof p.jobIdx === 'number') jobIdx = p.jobIdx
     }
 
     while (Date.now() - startTime < MAX_BATCH_MS && jobIdx < allJobs.length) {
-      const job = allJobs[jobIdx]
-      const saved = await processJob(job)
+      const saved = await processJob(allJobs[jobIdx])
       totalSaved += saved
       processedJobs++
       jobIdx++
@@ -309,10 +230,6 @@ export async function GET() {
       elapsedMs: Date.now() - startTime,
     })
   } catch (error: any) {
-    return NextResponse.json({
-      success: false,
-      error: error.message,
-      elapsedMs: Date.now() - startTime,
-    })
+    return NextResponse.json({ success: false, error: error.message, elapsedMs: Date.now() - startTime })
   }
 }

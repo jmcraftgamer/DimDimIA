@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     const offset = Math.max(0, parseInt(searchParams.get('offset') || '0'))
     const limit = Math.min(10000, Math.max(1, parseInt(searchParams.get('limit') || '500')))
 
-    const where: any = { isActive: true, inStock: true }
+    const where: any = { isActive: true }
     if (category) where.category = category
     if (store) where.store = store
 
@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { category } = await request.json()
-    const where: any = { isActive: true, inStock: true }
+    const where: any = { isActive: true }
     if (category) where.category = category
 
     const [products, total] = await Promise.all([
