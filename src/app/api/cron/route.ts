@@ -180,6 +180,8 @@ export async function GET() {
   let processedJobs = 0
 
   try {
+    await prisma.product.updateMany({ where: { isActive: false }, data: { isActive: true } })
+
     let state = await prisma.cronState.findUnique({ where: { id: 'default' } })
     if (!state) {
       state = await prisma.cronState.create({ data: { id: 'default' } })
@@ -189,14 +191,8 @@ export async function GET() {
     let jobIdx = 0
     if (state.pendingApifyRun && typeof state.pendingApifyRun === 'object') {
       const p = state.pendingApifyRun as any
-      if (p.seeded) {
-        return NextResponse.json({
-          success: true, seeded: true,
-          activeProducts: await prisma.product.count({ where: { isActive: true } }),
-          elapsedMs: Date.now() - startTime,
-        })
-      }
       if (typeof p.jobIdx === 'number') jobIdx = p.jobIdx
+      if (jobIdx >= allJobs.length) jobIdx = 0
     }
 
     while (Date.now() - startTime < MAX_BATCH_MS && jobIdx < allJobs.length) {
@@ -204,26 +200,19 @@ export async function GET() {
       totalSaved += saved
       processedJobs++
       jobIdx++
-
-      await prisma.cronState.update({
-        where: { id: 'default' },
-        data: { pendingApifyRun: { jobIdx }, updatedAt: new Date() },
-      })
     }
+
+    const nextIdx = jobIdx >= allJobs.length ? 0 : jobIdx
+    await prisma.cronState.update({
+      where: { id: 'default' },
+      data: { pendingApifyRun: { jobIdx: nextIdx }, updatedAt: new Date() },
+    })
 
     const activeProducts = await prisma.product.count({ where: { isActive: true } })
 
-    if (jobIdx >= allJobs.length) {
-      await prisma.cronState.update({
-        where: { id: 'default' },
-        data: { pendingApifyRun: { seeded: true, jobIdx }, updatedAt: new Date() },
-      })
-    }
-
     return NextResponse.json({
       success: true,
-      seeded: jobIdx >= allJobs.length,
-      progress: `${jobIdx}/${allJobs.length}`,
+      progress: `${jobIdx}/${allJobs.length}${jobIdx >= allJobs.length ? ' (reiniciando)' : ''}`,
       processedJobs,
       totalSaved,
       activeProducts,
