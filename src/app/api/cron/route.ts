@@ -40,6 +40,11 @@ export async function GET() {
   let totalSaved = 0
 
   try {
+    await prisma.product.updateMany({
+      where: { isPromoted: false },
+      data: { isActive: false },
+    })
+
     let state = await prisma.cronState.findUnique({ where: { id: 'default' } })
     if (!state) {
       state = await prisma.cronState.create({ data: { id: 'default' } })
@@ -113,17 +118,24 @@ async function savePriceHistory(productId: string, price: number, oldPrice: numb
 
 async function saveProducts(products: ScrapedProduct[], catSlug: string, subName: string): Promise<number> {
   let saved = 0
+  const nonPromoted: { product: ScrapedProduct; score: number }[] = []
+
   for (const p of products) {
     if (!p.name || p.price <= 0) continue
     const isPromoted = detectPromoted(p)
-    if (!isPromoted) continue
+
+    if (!isPromoted) {
+      const score = (p.totalSales || 0) * 10 + (p.rating || 0)
+      nonPromoted.push({ product: p, score })
+      continue
+    }
 
     try {
       const id = buildProductId(p.store, p.productUrl, p.name)
       const existing = await prisma.product.findUnique({ where: { id } })
 
       const [catPath, sellerId] = await Promise.all([
-        existing || !isPromoted ? null : autoclassifyProduct(p.name, p.description).catch(() => null),
+        existing ? null : autoclassifyProduct(p.name, p.description).catch(() => null),
         saveOrGetSeller(p.sellerName || p.store, p.store).catch(() => null),
       ])
 
@@ -142,7 +154,7 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
             category: catSlug,
             subcategory: subName,
             isActive: p.inStock !== false,
-            isPromoted: isPromoted || existing.isPromoted,
+            isPromoted: true,
             sellerId: sellerId ?? existing.sellerId,
             lastVerified: new Date(),
           },
@@ -168,7 +180,7 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
             couponCode: p.couponCode ?? null,
             tax: p.tax ?? null,
             isActive: p.inStock !== false,
-            isPromoted,
+            isPromoted: true,
             inStock: p.inStock !== false,
             sellerId: sellerId ?? null,
             lastVerified: new Date(),
@@ -184,6 +196,59 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
       saved++
     } catch (_) {}
   }
+
+  if (nonPromoted.length > 0) {
+    nonPromoted.sort((a, b) => b.score - a.score || a.product.price - b.product.price)
+    const best = nonPromoted[0].product
+    try {
+      const id = buildProductId(best.store, best.productUrl, best.name)
+      const existing = await prisma.product.findUnique({ where: { id } })
+      if (existing && existing.isPromoted) return saved
+
+      if (existing) {
+        await prisma.product.update({
+          where: { id },
+          data: {
+            price: best.price,
+            rating: best.rating ?? existing.rating,
+            totalSales: best.totalSales ?? existing.totalSales,
+            freeShipping: best.freeShipping ?? existing.freeShipping,
+            category: catSlug,
+            subcategory: subName,
+            isActive: best.inStock !== false,
+            isPromoted: false,
+            lastVerified: new Date(),
+          },
+        })
+      } else {
+        await prisma.product.create({
+          data: {
+            id,
+            name: best.name,
+            description: best.description || best.name,
+            price: best.price,
+            oldPrice: best.oldPrice ?? null,
+            category: catSlug,
+            subcategory: subName,
+            store: best.store,
+            imageUrl: best.imageUrl || 'https://via.placeholder.com/200',
+            productUrl: best.productUrl || '',
+            rating: best.rating ?? null,
+            totalSales: best.totalSales ?? null,
+            freeShipping: best.freeShipping ?? null,
+            coupon: best.coupon ?? null,
+            couponCode: best.couponCode ?? null,
+            tax: best.tax ?? null,
+            isActive: best.inStock !== false,
+            isPromoted: false,
+            inStock: best.inStock !== false,
+            lastVerified: new Date(),
+          },
+        })
+      }
+    } catch (_) {}
+  }
+
   return saved
 }
 
