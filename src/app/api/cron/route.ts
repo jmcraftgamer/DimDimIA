@@ -100,11 +100,15 @@ export async function GET() {
       const mlCat = MLB_CATEGORIES[(mlIdx + b) % MLB_CATEGORIES.length]
       if (!mlCat) continue
 
-      const products = await scrapeMLByCategory(mlCat.slug, mlCat.id)
-      if (products.length > 0) {
-        const saved = await saveProducts(products, mlCat.slug, mlCat.name)
-        totalSaved += saved
-        processed.push(`${mlCat.name}: ${products.length} encontrados, ${saved} salvos`)
+      try {
+        const products = await scrapeMLByCategory(mlCat.slug, mlCat.id)
+        processed.push(`${mlCat.name} (${mlCat.id}): ${products.length} promos`)
+        if (products.length > 0) {
+          const saved = await saveProducts(products, mlCat.slug, mlCat.name)
+          totalSaved += saved
+        }
+      } catch (err: any) {
+        processed.push(`${mlCat.name}: ERRO ${err.message}`)
       }
     }
 

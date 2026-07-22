@@ -117,6 +117,20 @@ interface MLBItem {
     average: number
     total: number
   }
+  prices?: {
+    presentation?: {
+      display_currency?: string
+    }
+    prices?: Array<{
+      type: string
+      amount: number
+      regular_amount: number | null
+    }>
+  }
+  installments?: {
+    quantity: number
+    amount: number
+  }
 }
 
 interface MLBResponse {
@@ -130,9 +144,23 @@ interface MLBResponse {
 
 const API_HEADERS = {
   'Accept': 'application/json',
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-  'Accept-Language': 'pt-BR,pt;q=0.9',
-  'Referer': 'https://www.mercadolivre.com.br/',
+  'User-Agent': 'DimDimIA/1.0',
+}
+
+function extractOldPrice(item: MLBItem): number | undefined {
+  if (item.original_price && item.original_price > item.price) {
+    return item.original_price
+  }
+
+  if (item.prices?.prices) {
+    for (const p of item.prices.prices) {
+      if (p.regular_amount && p.regular_amount > p.amount) {
+        return p.regular_amount
+      }
+    }
+  }
+
+  return undefined
 }
 
 export async function scrapeMLByCategory(
@@ -145,6 +173,8 @@ export async function scrapeMLByCategory(
   const limit = 50
   const maxResults = 1000
   const maxPages = Math.ceil(maxResults / limit)
+  let totalItems = 0
+  let promosFound = 0
 
   for (let page = 0; page < maxPages; page++) {
     const offset = page * limit
@@ -152,22 +182,30 @@ export async function scrapeMLByCategory(
 
     try {
       const res = await fetch(url, { headers: API_HEADERS })
-      if (!res.ok) break
+      if (!res.ok) {
+        console.error(`[ML-API] HTTP ${res.status} for ${catId}`)
+        break
+      }
 
       const data: MLBResponse = await res.json()
       const items = data.results || []
+      totalItems += items.length
+      const totalFromAPI = data.paging?.total || 0
 
       for (const item of items) {
-        if (!item.original_price || item.original_price <= item.price) continue
+        const oldPrice = extractOldPrice(item)
+        if (!oldPrice) continue
 
-        const discount = Math.round((1 - item.price / item.original_price) * 100)
+        const discount = Math.round((1 - item.price / oldPrice) * 100)
         if (discount < 5) continue
+
+        promosFound++
 
         allProducts.push({
           name: item.title,
           description: item.title,
           price: item.price,
-          oldPrice: item.original_price,
+          oldPrice,
           store: 'Mercado Livre',
           imageUrl: item.thumbnail?.replace('http:', 'https:') || 'https://via.placeholder.com/200',
           productUrl: item.permalink,
@@ -186,6 +224,7 @@ export async function scrapeMLByCategory(
     }
   }
 
+  console.log(`[ML-API] ${catId} (${categorySlug}): ${totalItems} items, ${promosFound} promos`)
   return allProducts
 }
 
