@@ -116,6 +116,7 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
   for (const p of products) {
     if (!p.name || p.price <= 0) continue
     const isPromoted = detectPromoted(p)
+    if (!isPromoted) continue
 
     try {
       const id = buildProductId(p.store, p.productUrl, p.name)
@@ -140,7 +141,7 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
             tax: p.tax ?? existing.tax,
             category: catSlug,
             subcategory: subName,
-            isActive: true,
+            isActive: p.inStock !== false,
             isPromoted: isPromoted || existing.isPromoted,
             sellerId: sellerId ?? existing.sellerId,
             lastVerified: new Date(),
@@ -166,8 +167,9 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
             coupon: p.coupon ?? null,
             couponCode: p.couponCode ?? null,
             tax: p.tax ?? null,
-            isActive: true,
+            isActive: p.inStock !== false,
             isPromoted,
+            inStock: p.inStock !== false,
             sellerId: sellerId ?? null,
             lastVerified: new Date(),
           },
@@ -225,6 +227,7 @@ async function processOneStore(state: any): Promise<{ state: any; saved: number;
           rating: item.average_rating || item.rating || undefined,
           totalSales: item.sales || item.soldQuantity || undefined,
           freeShipping: item.shipping?.free_shipping || item.free_shipping || false,
+          inStock: item.available !== false && item.stock !== 0,
         })).filter((p: any) => p.name && p.price > 0)
 
         saved = await saveProducts(apifyProducts, pendingRun.categorySlug, pendingRun.subName)

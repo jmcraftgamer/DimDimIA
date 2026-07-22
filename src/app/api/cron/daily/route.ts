@@ -19,7 +19,7 @@ export async function GET() {
       if (p.oldPrice && p.oldPrice <= p.price) {
         await prisma.product.update({
           where: { id: p.id },
-          data: { isPromoted: false, oldPrice: null },
+          data: { isPromoted: false, oldPrice: null, isActive: false },
         })
         removed++
       }

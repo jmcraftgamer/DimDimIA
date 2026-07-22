@@ -36,6 +36,7 @@ export interface ScrapedProduct {
   freeShipping?: boolean
   tax?: number
   sellerName?: string
+  inStock?: boolean
 }
 
 export interface ChatMessage {

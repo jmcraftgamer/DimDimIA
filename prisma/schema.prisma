@@ -117,6 +117,7 @@ model Product {
   reason       String?
   isActive     Boolean           @default(true)
   isPromoted   Boolean           @default(false)
+  inStock      Boolean           @default(true)
   reviewsJson  Json?
   sellerId     String?
   seller       Seller?           @relation(fields: [sellerId], references: [id])

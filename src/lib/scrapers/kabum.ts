@@ -104,45 +104,72 @@ function findCategoryUrl(query: string): string | null {
   return null
 }
 
+function parsePage(html: string): ScrapedProduct[] {
+  const $ = cheerio.load(html)
+  const nextData = $('#__NEXT_DATA__').html()
+  if (!nextData) return []
+
+  const json = JSON.parse(nextData)
+  const items = json.props?.pageProps?.data?.catalogServer?.data || []
+  if (!items.length) return []
+
+  return items.map((p: any) => ({
+    name: p.name || '',
+    description: p.description ? cheerio.load(p.description).text().trim().substring(0, 200) : p.name || '',
+    price: p.priceWithDiscount || p.price || 0,
+    oldPrice: p.oldPrice && p.oldPrice !== p.price ? p.oldPrice : undefined,
+    store: 'Kabum',
+    imageUrl: p.image || p.thumbnail || 'https://via.placeholder.com/200',
+    productUrl: `https://www.kabum.com.br/produto/${p.code}`,
+    rating: p.averageRating || undefined,
+    totalSales: p.ratingCount || undefined,
+    freeShipping: p.flags?.isFreeShipping || false,
+    coupon: p.flags?.hasCoupon ? 'CUPOM' : undefined,
+    inStock: p.available !== false && p.stock !== 0,
+  })).filter((p: ScrapedProduct) => p.name && p.price > 0)
+}
+
+const HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'pt-BR,pt;q=0.9',
+  'Referer': 'https://www.google.com/',
+}
+
 export async function scrapeKabum(query: string): Promise<ScrapedProduct[]> {
   try {
     const catUrl = findCategoryUrl(query)
-    const url = catUrl
-      ? `https://www.kabum.com.br/${catUrl}`
-      : `https://www.kabum.com.br/busca/${encodeURIComponent(query)}`
 
-    const { data } = await axios.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'pt-BR,pt;q=0.9',
-        'Referer': 'https://www.google.com/',
-      },
-      timeout: 15000,
-    })
+    if (catUrl) {
+      // Scrape multiple pages for category URLs
+      const allProducts: ScrapedProduct[] = []
+      const MAX_PAGES = 50
 
-    const $ = cheerio.load(data)
-    const nextData = $('#__NEXT_DATA__').html()
-    if (!nextData) return []
+      for (let page = 1; page <= MAX_PAGES; page++) {
+        const url = page === 1
+          ? `https://www.kabum.com.br/${catUrl}`
+          : `https://www.kabum.com.br/${catUrl}?page_number=${page}`
 
-    const json = JSON.parse(nextData)
-    const items = json.props?.pageProps?.data?.catalogServer?.data || []
+        try {
+          const { data } = await axios.get(url, { headers: HEADERS, timeout: 8000 })
+          const products = parsePage(data)
 
-    const products: ScrapedProduct[] = items.map((p: any) => ({
-      name: p.name || '',
-      description: p.description ? cheerio.load(p.description).text().trim().substring(0, 200) : p.name || '',
-      price: p.priceWithDiscount || p.price || 0,
-      oldPrice: p.oldPrice && p.oldPrice !== p.price ? p.oldPrice : undefined,
-      store: 'Kabum',
-      imageUrl: p.image || p.thumbnail || 'https://via.placeholder.com/200',
-      productUrl: `https://www.kabum.com.br/produto/${p.code}`,
-      rating: p.averageRating || undefined,
-      totalSales: p.ratingCount || undefined,
-      freeShipping: p.flags?.isFreeShipping || false,
-      coupon: p.flags?.hasCoupon ? 'CUPOM' : undefined,
-    })).filter((p: ScrapedProduct) => p.name && p.price > 0)
+          if (products.length === 0) break
 
-    return catUrl ? products : products.slice(0, 15)
+          allProducts.push(...products)
+        } catch {
+          break
+        }
+      }
+
+      return allProducts
+    }
+
+    // Search query - single page, limited results
+    const url = `https://www.kabum.com.br/busca/${encodeURIComponent(query)}`
+    const { data } = await axios.get(url, { headers: HEADERS, timeout: 15000 })
+    const products = parsePage(data)
+    return products.slice(0, 15)
   } catch (error) {
     console.error('Kabum scrape error:', error)
     return []
