@@ -55,17 +55,21 @@ export async function scrapeShopee(query: string): Promise<ScrapedProduct[]> {
       const basic = item.item_basic || item
       const name = basic.name || ''
       const price = parsePrice(basic.price || 0)
+      const originalPrice = basic.original_price ? parsePrice(basic.original_price) : undefined
       const imageId = basic.image || (basic.images && basic.images[0]) || ''
       const shopId = basic.shopid || ''
       const itemId = basic.itemid || ''
       const rating = basic.item_rating?.rating_star || item.item_rating?.rating_star || undefined
       const sold = item.sold || item.historical_sold || basic.historical_sold || undefined
 
+      const oldPrice = originalPrice && originalPrice > price ? originalPrice : undefined
+
       if (name && price > 0) {
         products.push({
           name,
           description: name,
           price,
+          oldPrice,
           store: 'Shopee',
           imageUrl: buildImageUrl(imageId),
           productUrl: buildProductUrl(shopId, itemId),

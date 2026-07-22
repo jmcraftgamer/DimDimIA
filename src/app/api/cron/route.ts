@@ -1,18 +1,29 @@
 import { NextResponse } from 'next/server'
 import prisma from '../../../lib/prisma'
-import { scrapeOneStore } from '../../../lib/scrapers/index'
+import { scrapeMercadoLivre } from '../../../lib/scrapers/mercadolivre'
+import { scrapeAmazon } from '../../../lib/scrapers/amazon'
+import { scrapeShopee } from '../../../lib/scrapers/shopee'
+import { scrapeAliExpress } from '../../../lib/scrapers/aliexpress'
+import { scrapeKabum } from '../../../lib/scrapers/kabum'
+import { scrapePichau } from '../../../lib/scrapers/pichau'
+import { scrapeTerabyteShop } from '../../../lib/scrapers/terabyteshop'
 import { ScrapedProduct } from '../../../types'
 import { ALL_CATEGORIES } from '../../../worker/categories'
 import { scrapeMLByCategory } from '../../../lib/scrapers/mercadolivre-api'
-import { autoclassifyProduct, ensureCategoryPath, linkProductToCategories } from '../../../lib/categorizer'
 import { checkSeller } from '../../../lib/whitelist'
 
 export const maxDuration = 60
 export const dynamic = 'force-dynamic'
 
-function detectPromoted(p: ScrapedProduct): boolean {
-  return !!(p.oldPrice || p.coupon || p.couponCode)
-}
+const STORES = [
+  { name: 'Mercado Livre', scraper: scrapeMercadoLivre },
+  { name: 'Amazon', scraper: scrapeAmazon },
+  { name: 'Shopee', scraper: scrapeShopee },
+  { name: 'AliExpress', scraper: scrapeAliExpress },
+  { name: 'Kabum', scraper: scrapeKabum },
+  { name: 'Pichau', scraper: scrapePichau },
+  { name: 'TerabyteShop', scraper: scrapeTerabyteShop },
+]
 
 function buildProductId(store: string, productUrl: string, name: string): string {
   if (productUrl) {
@@ -115,17 +126,22 @@ export async function GET() {
       mlSaved = await saveProducts(mlProducts, cat.slug, subName)
     }
 
-    const kabumResults = await Promise.allSettled(
-      cat.subcategories.slice(0, 3).flatMap(sub =>
-        sub.queries.slice(0, 2).map(query =>
-          scrapeOneStore(query, 4).then(products =>
-            products.length > 0 ? saveProducts(products, cat.slug, sub.name) : 0
-          )
-        )
+    const storePromises = STORES.flatMap(store =>
+      cat.subcategories.slice(0, 2).flatMap(sub =>
+        sub.queries.slice(0, 1).map(async query => {
+          try {
+            const products = await store.scraper(query)
+            const withStore = products.map((p: ScrapedProduct) => ({ ...p, store: store.name }))
+            return withStore.length > 0 ? saveProducts(withStore, cat.slug, sub.name) : 0
+          } catch {
+            return 0
+          }
+        })
       )
     )
 
-    for (const r of kabumResults) {
+    const storeResults = await Promise.allSettled(storePromises)
+    for (const r of storeResults) {
       if (r.status === 'fulfilled') totalSaved += r.value
     }
     totalSaved += mlSaved
@@ -146,7 +162,7 @@ export async function GET() {
       mlCategoryId,
       mlProductsFound: mlProducts.length,
       mlSaved,
-      nextCategory: ALL_CATEGORIES[catIdx].slug,
+      storeQueries: storePromises.length,
       totalSaved,
       activeProducts,
       elapsedMs: Date.now() - startTime,

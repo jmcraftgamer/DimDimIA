@@ -40,8 +40,25 @@ function parseAmazonProducts(html: string): ScrapedProduct[] {
     const couponText = $el.find('.s-coupon-highlight, [class*="coupon"]').text().trim()
     const salesText = $el.find('.a-size-base').filter((_, el) => $(el).text().includes('vendidos')).text().trim()
 
+    const oldPriceWhole = $el.find('.a-text-price .a-price-whole').first().text().trim()
+    const oldPriceFraction = $el.find('.a-text-price .a-price-fraction').first().text().trim()
     const priceStr = priceWhole.replace(/\./g, '').replace(',', '.') + (priceFraction ? '.' + priceFraction : '')
     const price = parseFloat(priceStr) || 0
+
+    let oldPrice: number | undefined
+    if (oldPriceWhole) {
+      const oldPriceStr = oldPriceWhole.replace(/\./g, '').replace(',', '.') + (oldPriceFraction ? '.' + oldPriceFraction : '')
+      oldPrice = parseFloat(oldPriceStr) || undefined
+    }
+
+    if (!oldPrice || oldPrice <= price) {
+      const listPriceText = $el.find('[class*="basisPrice"], .a-price .a-offscreen').first().text().trim()
+      const listMatch = listPriceText.match(/R\$\s*([\d.,]+)/)
+      if (listMatch) {
+        const parsed = parseFloat(listMatch[1].replace(/\./g, '').replace(',', '.'))
+        if (parsed > price) oldPrice = parsed
+      }
+    }
 
     if (name && price > 0) {
       const fullUrl = productUrl.startsWith('http') ? productUrl : `https://www.amazon.com.br${productUrl}`
@@ -49,6 +66,7 @@ function parseAmazonProducts(html: string): ScrapedProduct[] {
         name,
         description: name,
         price,
+        oldPrice: oldPrice && oldPrice > price ? oldPrice : undefined,
         store: 'Amazon',
         imageUrl: imageUrl || 'https://via.placeholder.com/200',
         productUrl: fullUrl,

@@ -43,17 +43,28 @@ export async function scrapePichau(query: string): Promise<ScrapedProduct[]> {
       const $el = $(el)
       const name = $el.find('[class*="title"], [class*="name"], h2, h3').first().text().trim()
       const priceText = $el.find('[class*="price"], [class*="Price"]').first().text().trim()
+      const oldPriceText = $el.find('[class*="oldPrice"], [class*="old-price"], [class*="listPrice"], s, del').first().text().trim()
       const imageUrl = $el.find('img').attr('src') || $el.find('img').attr('data-src') || ''
       const link = $el.closest('a').attr('href') || $el.find('a').first().attr('href') || ''
 
       const priceMatch = priceText.match(/[\d.,]+/)
       const price = priceMatch ? parseFloat(priceMatch[0].replace(/\./g, '').replace(',', '.')) : 0
 
+      let oldPrice: number | undefined
+      if (oldPriceText) {
+        const oldMatch = oldPriceText.match(/[\d.,]+/)
+        if (oldMatch) {
+          const parsed = parseFloat(oldMatch[0].replace(/\./g, '').replace(',', '.'))
+          if (parsed > price) oldPrice = parsed
+        }
+      }
+
       if (name && price > 0) {
         products.push({
           name,
           description: name,
           price,
+          oldPrice,
           store: 'Pichau',
           imageUrl: imageUrl || 'https://via.placeholder.com/200',
           productUrl: link.startsWith('http') ? link : `https://www.pichau.com.br${link}`,
