@@ -113,20 +113,28 @@ function parsePage(html: string): ScrapedProduct[] {
   const items = json.props?.pageProps?.data?.catalogServer?.data || []
   if (!items.length) return []
 
-  return items.map((p: any) => ({
-    name: p.name || '',
-    description: p.description ? cheerio.load(p.description).text().trim().substring(0, 200) : p.name || '',
-    price: p.priceWithDiscount || p.price || 0,
-    oldPrice: p.oldPrice && p.oldPrice !== p.price ? p.oldPrice : undefined,
-    store: 'Kabum',
-    imageUrl: p.image || p.thumbnail || 'https://via.placeholder.com/200',
-    productUrl: `https://www.kabum.com.br/produto/${p.code}`,
-    rating: p.averageRating || undefined,
-    totalSales: p.ratingCount || undefined,
-    freeShipping: p.flags?.isFreeShipping || false,
-    coupon: p.flags?.hasCoupon ? 'CUPOM' : undefined,
-    inStock: p.available !== false && p.stock !== 0,
-  })).filter((p: ScrapedProduct) => p.name && p.price > 0)
+  const discountThreshold = 5
+
+  return items.map((p: any) => {
+    const price = p.priceWithDiscount || p.price || 0
+    const oldPrice = p.oldPrice && p.oldPrice > price ? p.oldPrice : undefined
+    const discount = oldPrice ? Math.round((1 - price / oldPrice) * 100) : 0
+
+    return {
+      name: p.name || '',
+      description: p.description ? cheerio.load(p.description).text().trim().substring(0, 200) : p.name || '',
+      price,
+      oldPrice: discount >= discountThreshold ? oldPrice : undefined,
+      store: 'Kabum',
+      imageUrl: p.image || p.thumbnail || 'https://via.placeholder.com/200',
+      productUrl: `https://www.kabum.com.br/produto/${p.code}`,
+      rating: p.averageRating || undefined,
+      totalSales: p.ratingCount || undefined,
+      freeShipping: p.flags?.isFreeShipping || false,
+      coupon: p.flags?.hasCoupon ? 'CUPOM' : undefined,
+      inStock: p.available !== false && p.stock !== 0,
+    }
+  }).filter((p: ScrapedProduct) => p.name && p.price > 0 && !!p.oldPrice)
 }
 
 const HEADERS = {

@@ -1,27 +1,36 @@
 import prisma from '../lib/prisma'
 
 export async function cleanupStaleProducts(): Promise<number> {
-  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
 
   const deleted = await prisma.product.deleteMany({
     where: {
       isActive: false,
-      updatedAt: { lt: twentyFourHoursAgo },
+      updatedAt: { lt: oneHourAgo },
     },
   })
 
   const deactivated = await prisma.product.updateMany({
     where: {
       isActive: true,
-      updatedAt: { lt: twentyFourHoursAgo },
+      updatedAt: { lt: oneHourAgo },
     },
     data: { isActive: false },
   })
 
-  console.log(`[Cleanup] ${deactivated.count} produtos desativados (não verificados há 24h)`)
-  console.log(`[Cleanup] ${deleted.count} produtos removidos (inativos há mais de 24h)`)
+  const withoutPromotion = await prisma.product.updateMany({
+    where: {
+      isActive: true,
+      isPromoted: false,
+    },
+    data: { isActive: false },
+  })
 
-  return deactivated.count + deleted.count
+  console.log(`[Cleanup] ${deactivated.count} desativados (não verificados há 1h)`)
+  console.log(`[Cleanup] ${withoutPromotion.count} desativados (sem promoção)`)
+  console.log(`[Cleanup] ${deleted.count} removidos (inativos há mais de 1h)`)
+
+  return deactivated.count + withoutPromotion.count + deleted.count
 }
 
 export async function markCategoryProductsInactive(category: string, subcategory: string): Promise<number> {

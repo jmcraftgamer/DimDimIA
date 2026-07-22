@@ -6,12 +6,20 @@ export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
 
     const deactivated = await prisma.product.updateMany({
       where: {
         isActive: true,
-        lastVerified: { lt: twentyFourHoursAgo },
+        lastVerified: { lt: oneHourAgo },
+      },
+      data: { isActive: false },
+    })
+
+    const withoutPromotion = await prisma.product.updateMany({
+      where: {
+        isActive: true,
+        isPromoted: false,
       },
       data: { isActive: false },
     })
@@ -19,13 +27,14 @@ export async function GET() {
     const deleted = await prisma.product.deleteMany({
       where: {
         isActive: false,
-        lastVerified: { lt: twentyFourHoursAgo },
+        lastVerified: { lt: oneHourAgo },
       },
     })
 
     return NextResponse.json({
       success: true,
       deactivated: deactivated.count,
+      withoutPromotion: withoutPromotion.count,
       deleted: deleted.count,
     })
   } catch (error: any) {

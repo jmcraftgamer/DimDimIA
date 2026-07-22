@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 
-const INTERVAL_MS = 8000
+const INTERVAL_MS = 30000
 
 export default function BackgroundScraper() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)

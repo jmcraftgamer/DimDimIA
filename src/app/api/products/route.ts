@@ -3,8 +3,6 @@ import prisma from '../../../lib/prisma'
 
 export async function GET(request: NextRequest) {
   try {
-    await prisma.product.updateMany({ where: { isActive: false }, data: { isActive: true } })
-
     const { searchParams } = new URL(request.url)
     const category = searchParams.get('category')
     const query = searchParams.get('q')
@@ -12,34 +10,18 @@ export async function GET(request: NextRequest) {
     const offset = Math.max(0, parseInt(searchParams.get('offset') || '0'))
     const limit = Math.min(10000, Math.max(1, parseInt(searchParams.get('limit') || '500')))
 
-    const where: any = { isActive: true }
+    const where: any = { isActive: true, isPromoted: true }
     if (category) where.category = category
     if (store) where.store = store
 
     if (query) {
       where.name = { contains: query, mode: 'insensitive' }
-      const [products, total] = await Promise.all([
-        prisma.product.findMany({
-          where,
-          orderBy: [
-            { isPromoted: 'desc' },
-            { score: { sort: 'desc', nulls: 'last' } },
-            { price: 'asc' },
-          ],
-          skip: offset,
-          take: limit,
-        }),
-        prisma.product.count({ where }),
-      ])
-      return NextResponse.json({ products, total, offset, limit })
     }
 
     const [products, total] = await Promise.all([
       prisma.product.findMany({
         where,
         orderBy: [
-          { isPromoted: 'desc' },
-          { totalSales: { sort: 'desc', nulls: 'last' } },
           { score: { sort: 'desc', nulls: 'last' } },
           { price: 'asc' },
         ],
@@ -58,18 +40,14 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await prisma.product.updateMany({ where: { isActive: false }, data: { isActive: true } })
-
     const { category } = await request.json()
-    const where: any = { isActive: true }
+    const where: any = { isActive: true, isPromoted: true }
     if (category) where.category = category
 
     const [products, total] = await Promise.all([
       prisma.product.findMany({
         where,
         orderBy: [
-          { isPromoted: 'desc' },
-          { totalSales: { sort: 'desc', nulls: 'last' } },
           { score: { sort: 'desc', nulls: 'last' } },
           { price: 'asc' },
         ],

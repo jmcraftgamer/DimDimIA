@@ -6,6 +6,7 @@ export interface SubCategory {
 export interface CategoryGroup {
   name: string
   slug: string
+  mlbCategoryId?: string
   subcategories: SubCategory[]
 }
 
@@ -13,6 +14,7 @@ export const ALL_CATEGORIES: CategoryGroup[] = [
   {
     name: 'Eletrodomésticos',
     slug: 'eletrodomesticos',
+    mlbCategoryId: 'MLB5726',
     subcategories: [
       { name: 'Geladeira', queries: ['geladeira frost free', 'refrigerador', 'geladeira inverse'] },
       { name: 'Fogão', queries: ['fogão 4 bocas', 'fogão cooktop', 'fogão de embutir'] },
@@ -36,6 +38,7 @@ export const ALL_CATEGORIES: CategoryGroup[] = [
   {
     name: 'Eletrônicos',
     slug: 'eletronicos',
+    mlbCategoryId: 'MLB1000',
     subcategories: [
       { name: 'Notebook', queries: ['notebook', 'laptop', 'notebook core i5', 'notebook core i7'] },
       { name: 'Tablet', queries: ['tablet android', 'tablet ipad', 'tablet samsung'] },
@@ -53,6 +56,7 @@ export const ALL_CATEGORIES: CategoryGroup[] = [
   {
     name: 'Celulares',
     slug: 'celulares',
+    mlbCategoryId: 'MLB1051',
     subcategories: [
       { name: 'iPhone', queries: ['iphone 16', 'iphone 15', 'iphone 14', 'iphone 13'] },
       { name: 'Samsung Galaxy', queries: ['samsung galaxy s25', 'samsung galaxy s24', 'galaxy a55', 'galaxy a35'] },
@@ -67,6 +71,7 @@ export const ALL_CATEGORIES: CategoryGroup[] = [
   {
     name: 'Fones',
     slug: 'fones',
+    mlbCategoryId: 'MLB1059',
     subcategories: [
       { name: 'Bluetooth', queries: ['fone de ouvido bluetooth', 'fone sem fio', 'fone bluetooth jbl'] },
       { name: 'Headset Gamer', queries: ['headset gamer', 'fone gamer com microfone', 'headset razor'] },
@@ -79,6 +84,7 @@ export const ALL_CATEGORIES: CategoryGroup[] = [
   {
     name: 'Informática',
     slug: 'informatica',
+    mlbCategoryId: 'MLB1648',
     subcategories: [
       { name: 'Processador Intel', queries: ['processador intel core i5', 'processador intel core i7', 'intel core i9'] },
       { name: 'Processador AMD', queries: ['processador amd ryzen 5', 'amd ryzen 7', 'amd ryzen 9'] },
@@ -98,6 +104,7 @@ export const ALL_CATEGORIES: CategoryGroup[] = [
   {
     name: 'Games',
     slug: 'games',
+    mlbCategoryId: 'MLB1144',
     subcategories: [
       { name: 'PlayStation 5', queries: ['playstation 5', 'ps5 slim', 'ps5 pro'] },
       { name: 'Xbox Series', queries: ['xbox series x', 'xbox series s', 'xbox'] },
@@ -112,6 +119,7 @@ export const ALL_CATEGORIES: CategoryGroup[] = [
   {
     name: 'Casa',
     slug: 'casa',
+    mlbCategoryId: 'MLB1137',
     subcategories: [
       { name: 'Sofá', queries: ['sofá 3 lugares', 'sofá retrátil', 'sofá cama'] },
       { name: 'Cadeira', queries: ['cadeira de escritório', 'cadeira ergonômica', 'cadeira para sala'] },
@@ -128,6 +136,7 @@ export const ALL_CATEGORIES: CategoryGroup[] = [
   {
     name: 'Moda',
     slug: 'moda',
+    mlbCategoryId: 'MLB1430',
     subcategories: [
       { name: 'Tênis Masculino', queries: ['tênis masculino', 'tênis esportivo masculino', 'tênis casual masculino'] },
       { name: 'Tênis Feminino', queries: ['tênis feminino', 'tênis esportivo feminino', 'tênis casual feminino'] },
@@ -143,6 +152,7 @@ export const ALL_CATEGORIES: CategoryGroup[] = [
   {
     name: 'Beleza',
     slug: 'beleza',
+    mlbCategoryId: 'MLB1246',
     subcategories: [
       { name: 'Perfume', queries: ['perfume masculino', 'perfume feminino', 'colônia'] },
       { name: 'Maquiagem', queries: ['base maquiagem', 'batom', 'paleta de sombras', 'delineador'] },
@@ -155,6 +165,7 @@ export const ALL_CATEGORIES: CategoryGroup[] = [
   {
     name: 'Esportes',
     slug: 'esportes',
+    mlbCategoryId: 'MLB1276',
     subcategories: [
       { name: 'Bicicleta', queries: ['bicicleta aro 29', 'bicicleta mountain bike', 'bicicleta speed'] },
       { name: 'Esteira', queries: ['esteira ergométrica', 'esteira elétrica', 'esteira para casa'] },
@@ -168,6 +179,7 @@ export const ALL_CATEGORIES: CategoryGroup[] = [
   {
     name: 'Automotivo',
     slug: 'automotivo',
+    mlbCategoryId: 'MLB1743',
     subcategories: [
       { name: 'Pneu', queries: ['pneu 185/65', 'pneu 195/55', 'pneu 205/55', 'pneu aro 15'] },
       { name: 'Bateria', queries: ['bateria automotiva', 'bateria 60ah', 'bateria moura'] },
@@ -180,6 +192,7 @@ export const ALL_CATEGORIES: CategoryGroup[] = [
   {
     name: 'Livros',
     slug: 'livros',
+    mlbCategoryId: 'MLB1196',
     subcategories: [
       { name: 'Best-sellers', queries: ['livros best seller', 'livros mais vendidos', 'lançamentos livros'] },
       { name: 'Técnicos', queries: ['livros programação', 'livros engenharia', 'livros negócios'] },
@@ -190,6 +203,7 @@ export const ALL_CATEGORIES: CategoryGroup[] = [
   {
     name: 'Ferramentas',
     slug: 'ferramentas',
+    mlbCategoryId: 'MLB1552',
     subcategories: [
       { name: 'Furadeira', queries: ['furadeira elétrica', 'furadeira de impacto', 'parafusadeira'] },
       { name: 'Serra', queries: ['serra elétrica', 'serra tico-tico', 'serra circular'] },
@@ -200,6 +214,7 @@ export const ALL_CATEGORIES: CategoryGroup[] = [
   {
     name: 'Pet',
     slug: 'pet',
+    mlbCategoryId: 'MLB1384',
     subcategories: [
       { name: 'Ração', queries: ['ração cachorro', 'ração gato', 'ração premium'] },
       { name: 'Brinquedo', queries: ['brinquedo cachorro', 'brinquedo gato', 'kit brinquedo pet'] },
@@ -210,6 +225,7 @@ export const ALL_CATEGORIES: CategoryGroup[] = [
   {
     name: 'Bebê',
     slug: 'bebe',
+    mlbCategoryId: 'MLB1382',
     subcategories: [
       { name: 'Fralda', queries: ['fralda descartável', 'fralda pampers', 'fralda huggies'] },
       { name: 'Carrinho', queries: ['carrinho de bebê', 'carrinho infantil', 'cadeira de rodinhas'] },
@@ -221,6 +237,7 @@ export const ALL_CATEGORIES: CategoryGroup[] = [
   {
     name: 'Áudio e Instrumentos',
     slug: 'audio',
+    mlbCategoryId: 'MLB1162',
     subcategories: [
       { name: 'Violão', queries: ['violão acústico', 'violão elétrico', 'violão iniciante'] },
       { name: 'Guitarra', queries: ['guitarra elétrica', 'guitarra strato', 'guitarra les paul'] },
