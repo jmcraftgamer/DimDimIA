@@ -3,6 +3,8 @@ import prisma from '../../../lib/prisma'
 
 export async function GET(request: NextRequest) {
   try {
+    await prisma.product.updateMany({ where: { isActive: false }, data: { isActive: true } })
+
     const { searchParams } = new URL(request.url)
     const category = searchParams.get('category')
     const query = searchParams.get('q')
@@ -56,6 +58,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    await prisma.product.updateMany({ where: { isActive: false }, data: { isActive: true } })
+
     const { category } = await request.json()
     const where: any = { isActive: true }
     if (category) where.category = category

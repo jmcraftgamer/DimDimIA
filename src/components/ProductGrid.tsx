@@ -69,6 +69,10 @@ export default function ProductGrid({ initialCategory = '' }: ProductGridProps) 
   }, [category, fetchProducts])
 
   useEffect(() => {
+    fetch('/api/cron').catch(() => {})
+  }, [])
+
+  useEffect(() => {
     const el = sentinelRef.current
     if (!el) return
     const observer = new IntersectionObserver(
