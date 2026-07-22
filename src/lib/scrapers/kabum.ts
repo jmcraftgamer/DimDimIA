@@ -95,7 +95,7 @@ const CATEGORY_URLS: Record<string, string> = {
   microfone: 'microfone',
 }
 
-function findCategoryUrl(query: string): string | null {
+export function findCategoryUrl(query: string): string | null {
   const lower = query.toLowerCase()
   if (CATEGORY_URLS[lower]) return CATEGORY_URLS[lower]
   for (const [key, url] of Object.entries(CATEGORY_URLS)) {
@@ -142,10 +142,11 @@ export async function scrapeKabum(query: string): Promise<ScrapedProduct[]> {
 
     if (catUrl) {
       const MAX_PAGES = 50
-      const BATCH_SIZE = 6
+      const BATCH_SIZE = 8
       const allProducts: ScrapedProduct[] = []
+      const deadline = Date.now() + 8000
 
-      for (let batchStart = 1; batchStart <= MAX_PAGES; batchStart += BATCH_SIZE) {
+      for (let batchStart = 1; batchStart <= MAX_PAGES && Date.now() < deadline; batchStart += BATCH_SIZE) {
         const batchEnd = Math.min(batchStart + BATCH_SIZE - 1, MAX_PAGES)
         const pages = Array.from({ length: batchEnd - batchStart + 1 }, (_, i) => batchStart + i)
 
@@ -154,7 +155,7 @@ export async function scrapeKabum(query: string): Promise<ScrapedProduct[]> {
             const url = page === 1
               ? `https://www.kabum.com.br/${catUrl}`
               : `https://www.kabum.com.br/${catUrl}?page_number=${page}`
-            return axios.get(url, { headers: HEADERS, timeout: 8000 }).then(res => parsePage(res.data))
+            return axios.get(url, { headers: HEADERS, timeout: 6000 }).then(res => parsePage(res.data))
           })
         )
 
