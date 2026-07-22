@@ -1,29 +1,12 @@
 import { NextResponse } from 'next/server'
 import prisma from '../../../lib/prisma'
-import { scrapeMercadoLivre } from '../../../lib/scrapers/mercadolivre'
-import { scrapeAmazon } from '../../../lib/scrapers/amazon'
-import { scrapeShopee } from '../../../lib/scrapers/shopee'
-import { scrapeAliExpress } from '../../../lib/scrapers/aliexpress'
-import { scrapeKabum } from '../../../lib/scrapers/kabum'
-import { scrapePichau } from '../../../lib/scrapers/pichau'
-import { scrapeTerabyteShop } from '../../../lib/scrapers/terabyteshop'
 import { ScrapedProduct } from '../../../types'
 import { ALL_CATEGORIES } from '../../../worker/categories'
-import { scrapeMLByCategory } from '../../../lib/scrapers/mercadolivre-api'
+import { MLB_CATEGORIES, scrapeMLByCategory } from '../../../lib/scrapers/mercadolivre-api'
 import { checkSeller } from '../../../lib/whitelist'
 
 export const maxDuration = 60
 export const dynamic = 'force-dynamic'
-
-const STORES = [
-  { name: 'Mercado Livre', scraper: scrapeMercadoLivre },
-  { name: 'Amazon', scraper: scrapeAmazon },
-  { name: 'Shopee', scraper: scrapeShopee },
-  { name: 'AliExpress', scraper: scrapeAliExpress },
-  { name: 'Kabum', scraper: scrapeKabum },
-  { name: 'Pichau', scraper: scrapePichau },
-  { name: 'TerabyteShop', scraper: scrapeTerabyteShop },
-]
 
 function buildProductId(store: string, productUrl: string, name: string): string {
   if (productUrl) {
@@ -49,7 +32,6 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
   let saved = 0
   for (const p of products) {
     if (!p.name || p.price <= 0) continue
-
     if (!p.oldPrice || p.oldPrice <= p.price) continue
     const discount = Math.round((1 - p.price / p.oldPrice) * 100)
     if (discount < 5) continue
@@ -101,6 +83,7 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
 export async function GET() {
   const startTime = Date.now()
   let totalSaved = 0
+  const processed: string[] = []
 
   try {
     let state = await prisma.cronState.findUnique({ where: { id: 'default' } })
@@ -109,60 +92,36 @@ export async function GET() {
     }
 
     const raw = state.pendingApifyRun as any || {}
-    let catIdx = typeof raw.categoryIdx === 'number' ? raw.categoryIdx : 0
+    let mlIdx = typeof raw.mlIdx === 'number' ? raw.mlIdx : 0
 
-    const cat = ALL_CATEGORIES[catIdx % ALL_CATEGORIES.length]
+    const batchSize = 3
 
-    const mlCategoryId = (cat as any).mlbCategoryId as string | undefined
+    for (let b = 0; b < batchSize; b++) {
+      const mlCat = MLB_CATEGORIES[(mlIdx + b) % MLB_CATEGORIES.length]
+      if (!mlCat) continue
 
-    const mlProducts = mlCategoryId
-      ? await scrapeMLByCategory(cat.slug, mlCategoryId)
-      : []
-
-    let mlSaved = 0
-    if (mlProducts.length > 0) {
-      const firstSub = cat.subcategories[0]
-      const subName = firstSub?.name || 'geral'
-      mlSaved = await saveProducts(mlProducts, cat.slug, subName)
+      const products = await scrapeMLByCategory(mlCat.slug, mlCat.id)
+      if (products.length > 0) {
+        const saved = await saveProducts(products, mlCat.slug, mlCat.name)
+        totalSaved += saved
+        processed.push(`${mlCat.name}: ${products.length} encontrados, ${saved} salvos`)
+      }
     }
 
-    const storePromises = STORES.flatMap(store =>
-      cat.subcategories.slice(0, 2).flatMap(sub =>
-        sub.queries.slice(0, 1).map(async query => {
-          try {
-            const products = await store.scraper(query)
-            const withStore = products.map((p: ScrapedProduct) => ({ ...p, store: store.name }))
-            return withStore.length > 0 ? saveProducts(withStore, cat.slug, sub.name) : 0
-          } catch {
-            return 0
-          }
-        })
-      )
-    )
-
-    const storeResults = await Promise.allSettled(storePromises)
-    for (const r of storeResults) {
-      if (r.status === 'fulfilled') totalSaved += r.value
-    }
-    totalSaved += mlSaved
-
-    catIdx++
-    if (catIdx >= ALL_CATEGORIES.length) catIdx = 0
+    mlIdx += batchSize
 
     await prisma.cronState.update({
       where: { id: 'default' },
-      data: { pendingApifyRun: { categoryIdx: catIdx }, updatedAt: new Date() },
+      data: { pendingApifyRun: { mlIdx }, updatedAt: new Date() },
     })
 
     const activeProducts = await prisma.product.count({ where: { isActive: true } })
 
     return NextResponse.json({
       success: true,
-      category: cat.slug,
-      mlCategoryId,
-      mlProductsFound: mlProducts.length,
-      mlSaved,
-      storeQueries: storePromises.length,
+      processed,
+      mlIdx,
+      totalCategories: MLB_CATEGORIES.length,
       totalSaved,
       activeProducts,
       elapsedMs: Date.now() - startTime,
