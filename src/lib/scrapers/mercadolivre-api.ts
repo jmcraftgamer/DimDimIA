@@ -6,7 +6,7 @@ export interface MLBCategory {
   slug: string
 }
 
-export const MLB_CATEGORIES: MLBCategory[] = [
+const MLB_CATEGORIES_LIST: MLBCategory[] = [
   { id: 'MLB1051', name: 'Celulares', slug: 'celulares' },
   { id: 'MLB1055', name: 'TVs', slug: 'eletronicos' },
   { id: 'MLB1652', name: 'Notebooks', slug: 'eletronicos' },
@@ -84,8 +84,10 @@ export const MLB_CATEGORIES: MLBCategory[] = [
   { id: 'MLB1935', name: 'Som Automotivo', slug: 'automotivo' },
 ]
 
+export const MLB_CATEGORIES = MLB_CATEGORIES_LIST
+
 const MLB_API = 'https://api.mercadolibre.com'
-const API_HEADERS = {
+const HEADERS = {
   'Accept': 'application/json',
   'User-Agent': 'DimDimIA/1.0',
 }
@@ -97,7 +99,6 @@ interface SearchItem {
   original_price: number | null
   thumbnail: string
   permalink: string
-  category_id: string
   shipping: { free_shipping: boolean }
   seller: { id: number; nickname: string }
   sold_quantity: number
@@ -106,7 +107,6 @@ interface SearchItem {
 }
 
 interface SearchResponse {
-  paging: { total: number; offset: number; limit: number }
   results: SearchItem[]
 }
 
@@ -116,9 +116,9 @@ interface SalePrice {
   currency_id: string
 }
 
-async function getJSON<T>(url: string): Promise<T | null> {
+async function fetchJSON<T>(url: string): Promise<T | null> {
   try {
-    const res = await fetch(url, { headers: API_HEADERS })
+    const res = await fetch(url, { headers: HEADERS })
     if (!res.ok) return null
     return res.json()
   } catch {
@@ -135,15 +135,17 @@ export async function scrapeMLByCategory(
   const seen = new Set<string>()
   const candidates: SearchItem[] = []
 
-  const base = `${MLB_API}/sites/MLB/search`
+  const pctOff = encodeURIComponent('% OFF')
   const searchUrls = [
-    `${base}?category=${catId}&limit=50`,
-    `${base}?category=${catId}&q=OFF&limit=50`,
-    `${base}?category=${catId}&q=promoção&limit=50`,
+    `${MLB_API}/sites/MLB/search?category=${catId}&search_type=deals&limit=50`,
+    `${MLB_API}/sites/MLB/search?category=${catId}&q=${pctOff}&limit=50`,
+    `${MLB_API}/sites/MLB/search?category=${catId}&q=OFF&limit=50`,
+    `${MLB_API}/sites/MLB/search?category=${catId}&q=promo&limit=50`,
+    `${MLB_API}/sites/MLB/search?category=${catId}&limit=50&sort=sold_quantity_desc`,
   ]
 
   for (const url of searchUrls) {
-    const data = await getJSON<SearchResponse>(url)
+    const data = await fetchJSON<SearchResponse>(url)
     if (!data?.results) continue
     for (const item of data.results) {
       if (!seen.has(item.id)) {
@@ -155,88 +157,99 @@ export async function scrapeMLByCategory(
 
   if (candidates.length === 0) return []
 
-  const MAX_CHECK = 50
-  const toCheck = candidates.slice(0, MAX_CHECK)
+  const toCheck = candidates.slice(0, 60)
   const products: ScrapedProduct[] = []
+  let debugLog = `[ML-${slug}] ${candidates.length} candidates, checking sale_price...`
+  let saleOk = 0; let saleWithDiscount = 0
 
-  const priceResults = await Promise.allSettled(
-    toCheck.map(item =>
-      getJSON<SalePrice>(`${MLB_API}/items/${item.id}/sale_price?context=channel_marketplace`)
-        .then(sale => ({ item, sale }))
-    )
+  const results = await Promise.allSettled(
+    toCheck.map(async (item) => {
+      const sale = await fetchJSON<SalePrice>(
+        `${MLB_API}/items/${item.id}/sale_price?context=channel_marketplace`
+      )
+      if (!sale) { return null }
+      saleOk++
+      if (sale.regular_amount && sale.regular_amount > sale.amount) {
+        saleWithDiscount++
+      }
+
+      const oldPrice = sale.regular_amount && sale.regular_amount > sale.amount
+        ? sale.regular_amount
+        : (item.original_price && item.original_price > item.price ? item.original_price : null)
+
+      if (!oldPrice) return null
+
+      return {
+        name: item.title,
+        description: item.title,
+        price: sale.amount || item.price,
+        oldPrice,
+        store: 'Mercado Livre',
+        imageUrl: item.thumbnail?.replace('http:', 'https:') || 'https://via.placeholder.com/200',
+        productUrl: item.permalink,
+        rating: item.ratings?.average || undefined,
+        totalSales: item.sold_quantity || undefined,
+        freeShipping: item.shipping?.free_shipping || false,
+        sellerName: item.seller?.nickname || '',
+        inStock: item.available_quantity > 0,
+      } as ScrapedProduct
+    })
   )
 
-  for (const result of priceResults) {
-    if (result.status !== 'fulfilled') continue
-    const { item, sale } = result.value
-    if (!sale) continue
-
-    const oldPrice = sale.regular_amount && sale.regular_amount > sale.amount
-      ? sale.regular_amount
-      : (item.original_price && item.original_price > item.price ? item.original_price : null)
-
-    if (!oldPrice) continue
-
-    products.push({
-      name: item.title,
-      description: item.title,
-      price: sale.amount || item.price,
-      oldPrice,
-      store: 'Mercado Livre',
-      imageUrl: item.thumbnail?.replace('http:', 'https:') || 'https://via.placeholder.com/200',
-      productUrl: item.permalink,
-      rating: item.ratings?.average || undefined,
-      totalSales: item.sold_quantity || undefined,
-      freeShipping: item.shipping?.free_shipping || false,
-      sellerName: item.seller?.nickname || '',
-      inStock: item.available_quantity > 0,
-    })
+  for (const r of results) {
+    if (r.status === 'fulfilled' && r.value) {
+      products.push(r.value)
+    }
   }
 
+  debugLog += ` saleOk=${saleOk} withDiscount=${saleWithDiscount} final=${products.length}`
+  console.log(debugLog)
   return products
 }
 
 export async function scrapeMLSearch(query: string): Promise<ScrapedProduct[]> {
-  const data = await getJSON<SearchResponse>(
-    `${MLB_API}/sites/MLB/search?q=${encodeURIComponent(query)}&limit=50`
+  const data = await fetchJSON<SearchResponse>(
+    `${MLB_API}/sites/MLB/search?q=${encodeURIComponent(query + ' OFF')}&limit=50`
   )
   if (!data?.results) return []
 
   const toCheck = data.results.slice(0, 30)
   const products: ScrapedProduct[] = []
 
-  const priceResults = await Promise.allSettled(
-    toCheck.map(item =>
-      getJSON<SalePrice>(`${MLB_API}/items/${item.id}/sale_price?context=channel_marketplace`)
-        .then(sale => ({ item, sale }))
-    )
+  const results = await Promise.allSettled(
+    toCheck.map(async (item) => {
+      const sale = await fetchJSON<SalePrice>(
+        `${MLB_API}/items/${item.id}/sale_price?context=channel_marketplace`
+      )
+      if (!sale) return null
+
+      const oldPrice = sale.regular_amount && sale.regular_amount > sale.amount
+        ? sale.regular_amount
+        : (item.original_price && item.original_price > item.price ? item.original_price : null)
+
+      if (!oldPrice) return null
+
+      return {
+        name: item.title,
+        description: item.title,
+        price: sale.amount || item.price,
+        oldPrice,
+        store: 'Mercado Livre',
+        imageUrl: item.thumbnail?.replace('http:', 'https:') || 'https://via.placeholder.com/200',
+        productUrl: item.permalink,
+        rating: item.ratings?.average || undefined,
+        totalSales: item.sold_quantity || undefined,
+        freeShipping: item.shipping?.free_shipping || false,
+        sellerName: item.seller?.nickname || '',
+        inStock: item.available_quantity > 0,
+      } as ScrapedProduct
+    })
   )
 
-  for (const result of priceResults) {
-    if (result.status !== 'fulfilled') continue
-    const { item, sale } = result.value
-    if (!sale) continue
-
-    const oldPrice = sale.regular_amount && sale.regular_amount > sale.amount
-      ? sale.regular_amount
-      : (item.original_price && item.original_price > item.price ? item.original_price : null)
-
-    if (!oldPrice) continue
-
-    products.push({
-      name: item.title,
-      description: item.title,
-      price: sale.amount || item.price,
-      oldPrice,
-      store: 'Mercado Livre',
-      imageUrl: item.thumbnail?.replace('http:', 'https:') || 'https://via.placeholder.com/200',
-      productUrl: item.permalink,
-      rating: item.ratings?.average || undefined,
-      totalSales: item.sold_quantity || undefined,
-      freeShipping: item.shipping?.free_shipping || false,
-      sellerName: item.seller?.nickname || '',
-      inStock: item.available_quantity > 0,
-    })
+  for (const r of results) {
+    if (r.status === 'fulfilled' && r.value) {
+      products.push(r.value)
+    }
   }
 
   return products
