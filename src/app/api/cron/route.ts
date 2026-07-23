@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server'
 import prisma from '../../../lib/prisma'
 import { ScrapedProduct } from '../../../types'
-import { ALL_CATEGORIES } from '../../../worker/categories'
 import { MLB_CATEGORIES, scrapeMLByCategory } from '../../../lib/scrapers/mercadolivre-api'
-import { scrapeOneStore } from '../../../lib/scrapers/index'
 import { checkSeller } from '../../../lib/whitelist'
 
 export const maxDuration = 60
@@ -81,16 +79,6 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
   return saved
 }
 
-const KABUM_QUERIES = [
-  'notebook', 'smart tv', 'geladeira', 'air fryer',
-  'placa de video', 'ssd', 'fone de ouvido',
-  'cadeira gamer', 'monitor', 'teclado',
-  'fogao', 'microondas',
-  'iphone', 'tablet', 'smartwatch',
-]
-
-const STORE_NAMES = ['Amazon', 'Shopee', 'AliExpress', 'Pichau', 'TerabyteShop']
-
 export async function GET() {
   const startTime = Date.now()
   let totalSaved = 0
@@ -117,32 +105,6 @@ export async function GET() {
       } catch (err: any) {
         processed.push(`${mlCat.name}: ERRO ${err.message}`)
       }
-    }
-
-    const kabumQ = KABUM_QUERIES[t % KABUM_QUERIES.length]
-    try {
-      const products = await scrapeOneStore(kabumQ, 4)
-      processed.push(`Kabum[${kabumQ}]: ${products.length} promos`)
-      if (products.length > 0) {
-        const cat = ALL_CATEGORIES.find(c => kabumQ.includes(c.name) || c.name.includes(kabumQ))
-        const saved = await saveProducts(products, cat?.slug ?? 'geral', kabumQ)
-        totalSaved += saved
-      }
-    } catch (err: any) {
-      processed.push(`Kabum[${kabumQ}]: ERRO ${err.message}`)
-    }
-
-    const si = t % STORE_NAMES.length
-    const sq = ['notebook', 'smartphone', 'tv', 'fone'][t % 4]
-    try {
-      const products = await scrapeOneStore(sq, si + 1)
-      processed.push(`${STORE_NAMES[si]}[${sq}]: ${products.length} promos`)
-      if (products.length > 0) {
-        const saved = await saveProducts(products, 'geral', STORE_NAMES[si])
-        totalSaved += saved
-      }
-    } catch (err: any) {
-      processed.push(`${STORE_NAMES[si]}: ERRO ${err.message}`)
     }
 
     const activeProducts = await prisma.product.count({ where: { isActive: true } })
