@@ -1,3 +1,5 @@
+import axios from 'axios'
+import * as cheerio from 'cheerio'
 import { ScrapedProduct } from '../../types'
 
 export interface MLBCategory {
@@ -84,113 +86,16 @@ export const MLB_CATEGORIES: MLBCategory[] = [
   { id: 'MLB1935', name: 'Som Automotivo', slug: 'automotivo' },
 ]
 
-const MLB_API = 'https://api.mercadolibre.com'
-const API_HEADERS = {
-  'Accept': 'application/json',
-  'User-Agent': 'DimDimIA/1.0',
+const REQUEST_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'pt-BR,pt;q=0.9',
 }
 
-interface MLBItem {
-  id: string
-  title: string
-  price: number
-  original_price: number | null
-  currency_id: string
-  available_quantity: number
-  sold_quantity: number
-  thumbnail: string
-  permalink: string
-  category_id: string
-  official_store_name?: string
-  shipping: { free_shipping: boolean }
-  seller: { id: number; nickname: string }
-  ratings?: { average: number }
-}
-
-interface MLBResponse {
-  paging: { total: number; offset: number; limit: number }
-  results: MLBItem[]
-}
-
-interface MLBItemDetail extends MLBItem {
-  prices?: {
-    prices?: Array<{
-      type: string
-      amount: number
-      regular_amount: number | null
-    }>
-  }
-}
-
-interface MLBSalePrice {
-  amount: number
-  regular_amount: number | null
-  currency_id: string
-}
-
-async function getJSON<T>(url: string): Promise<T | null> {
-  try {
-    const res = await fetch(url, { headers: API_HEADERS })
-    if (!res.ok) return null
-    return res.json()
-  } catch {
-    return null
-  }
-}
-
-function getOldPrice(detail: MLBItemDetail): number | undefined {
-  if (detail.original_price && detail.original_price > detail.price) {
-    return detail.original_price
-  }
-  if (detail.prices?.prices) {
-    for (const p of detail.prices.prices) {
-      if (p.regular_amount && p.regular_amount > p.amount) {
-        return p.regular_amount
-      }
-    }
-  }
-  return undefined
-}
-
-function itemToProduct(item: MLBItemDetail): ScrapedProduct | null {
-  const oldPrice = getOldPrice(item)
-  if (!oldPrice) return null
-  return {
-    name: item.title,
-    description: item.title,
-    price: item.price,
-    oldPrice,
-    store: 'Mercado Livre',
-    imageUrl: item.thumbnail?.replace('http:', 'https:') || 'https://via.placeholder.com/200',
-    productUrl: item.permalink,
-    rating: item.ratings?.average || undefined,
-    totalSales: item.sold_quantity || undefined,
-    freeShipping: item.shipping?.free_shipping || false,
-    sellerName: item.seller?.nickname || '',
-    inStock: item.available_quantity > 0,
-  }
-}
-
-async function fetchItemsByIds(ids: string[]): Promise<MLBItemDetail[]> {
-  if (ids.length === 0) return []
-  const CHUNK = 20
-  const all: MLBItemDetail[] = []
-
-  for (let i = 0; i < ids.length; i += CHUNK) {
-    const chunk = ids.slice(i, i + CHUNK)
-    const data = await getJSON<{ code: number; body: MLBItemDetail }[]>(
-      `${MLB_API}/items?ids=${chunk.join(',')}`
-    )
-    if (data) {
-      for (const entry of data) {
-        if (entry.code === 200 && entry.body) {
-          all.push(entry.body)
-        }
-      }
-    }
-  }
-
-  return all
+function parseBRL(text: string): number {
+  const cleaned = text.replace(/[R$\s\.]/g, '').replace(',', '.').trim()
+  const num = parseFloat(cleaned)
+  return isNaN(num) ? 0 : num
 }
 
 export async function scrapeMLByCategory(
@@ -199,51 +104,65 @@ export async function scrapeMLByCategory(
 ): Promise<ScrapedProduct[]> {
   if (!catId) return []
 
-  const seenIds = new Set<string>()
-  const searchIds: string[] = []
+  const url = `https://www.mercadolivre.com.br/ofertas/categoria/${catId}/`
 
-  const base = `${MLB_API}/sites/MLB/search`
-  const queries = [
-    `${base}?category=${catId}&limit=50`,
-    `${base}?category=${catId}&q=OFF&limit=50`,
-    `${base}?category=${catId}&promotion=deals&limit=50`,
-  ]
+  try {
+    const { data } = await axios.get(url, { headers: REQUEST_HEADERS, timeout: 15000 })
+    const $ = cheerio.load(data)
+    const products: ScrapedProduct[] = []
 
-  for (const url of queries) {
-    const data = await getJSON<MLBResponse>(url)
-    if (!data?.results) continue
+    $('ol.ui-search-layout li.ui-search-layout__item, [class*="poly-card"]').each((_, el) => {
+      const $el = $(el)
 
-    for (const item of data.results) {
-      if (!seenIds.has(item.id)) {
-        seenIds.add(item.id)
-        searchIds.push(item.id)
+      const link = $el.find('a.poly-component__title, a.ui-search-item__group__element, a[href*="/produto/"]').first().attr('href')
+        || $el.find('a').first().attr('href')
+      if (!link || !link.includes('mercadolivre')) return
+
+      const name = $el.find('[class*="poly-component__title"], .ui-search-item__title, h2').first().text().trim()
+      if (!name) return
+
+      const img = $el.find('img').first().attr('data-src') || $el.find('img').first().attr('src') || ''
+
+      const discountEl = $el.find('[class*="poly-component__discount"], .andes-money-amount__discount, [class*="discount"]').first().text().trim()
+      const discountPct = parseInt(discountEl.replace(/\D/g, ''))
+
+      const priceText = $el.find('[class*="poly-price__current"], .andes-money-amount--current .andes-money-amount__fraction, .price-tag').first().text().trim()
+      const oldPriceText = $el.find('s.andes-money-amount--previous, [class*="andes-money-amount__fraction"]').first().parent().is('s') ? $el.find('s.andes-money-amount--previous .andes-money-amount__fraction').first().text().trim() : ''
+        || $el.find('s').first().text().trim()
+        || $el.find('[class*="previous"], [class*="old"]').first().text().trim()
+
+      const price = parseBRL(priceText)
+      if (!price) return
+
+      let oldPrice = oldPriceText ? parseBRL(oldPriceText) : 0
+
+      if ((!oldPrice || oldPrice <= price) && discountPct > 0 && discountPct < 100) {
+        oldPrice = Math.round(price / (1 - discountPct / 100))
       }
-    }
+
+      if (!oldPrice || oldPrice <= price) return
+
+      products.push({
+        name,
+        description: name,
+        price,
+        oldPrice,
+        store: 'Mercado Livre',
+        imageUrl: img.startsWith('http') ? img : `https:${img}`,
+        productUrl: link,
+        freeShipping: $el.text().toLowerCase().includes('frete grátis'),
+        sellerName: $el.find('[class*="poly-component__seller"], .ui-search-item__group__element a').first().text().trim(),
+        inStock: true,
+      })
+    })
+
+    return products
+  } catch (err: any) {
+    console.error(`[ML-Ofertas] ${catId} error: ${err.message}`)
+    return []
   }
-
-  if (searchIds.length === 0) return []
-
-  const details = await fetchItemsByIds(searchIds)
-  const products: ScrapedProduct[] = []
-
-  for (const detail of details) {
-    const product = itemToProduct(detail)
-    if (product) products.push(product)
-  }
-
-  return products
 }
 
 export async function scrapeMLSearch(query: string): Promise<ScrapedProduct[]> {
-  const data = await getJSON<MLBResponse>(
-    `${MLB_API}/sites/MLB/search?q=${encodeURIComponent(query)}&limit=50`
-  )
-  if (!data?.results) return []
-
-  const ids = data.results.map(r => r.id)
-  const details = await fetchItemsByIds(ids)
-
-  return details
-    .map(d => itemToProduct(d))
-    .filter(Boolean) as ScrapedProduct[]
+  return scrapeMLByCategory('busca')
 }
