@@ -1,6 +1,6 @@
 import { ScrapedProduct } from '../../types'
-import { scrapeMLSearch } from './mercadolivre-api'
+import { scrapeMLByCategory } from './mercadolivre-api'
 
 export async function scrapeMercadoLivre(query: string, skipApify?: boolean): Promise<ScrapedProduct[]> {
-  return scrapeMLSearch(query)
+  return scrapeMLByCategory('geral')
 }

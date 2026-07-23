@@ -3,6 +3,7 @@ import prisma from '../../../lib/prisma'
 import { ScrapedProduct } from '../../../types'
 import { ALL_CATEGORIES } from '../../../worker/categories'
 import { MLB_CATEGORIES, scrapeMLByCategory } from '../../../lib/scrapers/mercadolivre-api'
+import { scrapeKabum } from '../../../lib/scrapers/kabum'
 import { checkSeller } from '../../../lib/whitelist'
 
 export const maxDuration = 60
@@ -80,6 +81,14 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
   return saved
 }
 
+const KABUM_QUERIES = [
+  'notebook', 'smart tv', 'geladeira', 'air fryer',
+  'placa de video', 'ssd', 'memoria ram', 'fone de ouvido',
+  'cadeira gamer', 'monitor', 'mouse', 'teclado',
+  'fogao', 'microondas', 'cafeteira', 'ventilador',
+  'iphone', 'tablet', 'smartwatch', 'caixa de som',
+]
+
 export async function GET() {
   const startTime = Date.now()
   let totalSaved = 0
@@ -93,10 +102,11 @@ export async function GET() {
 
     const raw = state.pendingApifyRun as any || {}
     let mlIdx = typeof raw.mlIdx === 'number' ? raw.mlIdx : 0
+    let kabumIdx = typeof raw.kabumIdx === 'number' ? raw.kabumIdx : 0
 
-    const batchSize = 3
+    const mlBatch = 3
 
-    for (let b = 0; b < batchSize; b++) {
+    for (let b = 0; b < mlBatch; b++) {
       const mlCat = MLB_CATEGORIES[(mlIdx + b) % MLB_CATEGORIES.length]
       if (!mlCat) continue
 
@@ -112,11 +122,26 @@ export async function GET() {
       }
     }
 
-    mlIdx += batchSize
+    mlIdx += mlBatch
+
+    const kabumQuery = KABUM_QUERIES[kabumIdx % KABUM_QUERIES.length]
+    try {
+      const products = await scrapeKabum(kabumQuery)
+      processed.push(`Kabum[${kabumQuery}]: ${products.length} promos`)
+      if (products.length > 0) {
+        const cat = ALL_CATEGORIES.find(c => kabumQuery.includes(c.name) || c.name.includes(kabumQuery))
+        const catSlug = cat?.slug ?? 'geral'
+        const saved = await saveProducts(products, catSlug, kabumQuery)
+        totalSaved += saved
+      }
+    } catch (err: any) {
+      processed.push(`Kabum[${kabumQuery}]: ERRO ${err.message}`)
+    }
+    kabumIdx++
 
     await prisma.cronState.update({
       where: { id: 'default' },
-      data: { pendingApifyRun: { mlIdx }, updatedAt: new Date() },
+      data: { pendingApifyRun: { mlIdx, kabumIdx }, updatedAt: new Date() },
     })
 
     const activeProducts = await prisma.product.count({ where: { isActive: true } })
@@ -125,6 +150,7 @@ export async function GET() {
       success: true,
       processed,
       mlIdx,
+      kabumIdx,
       totalCategories: MLB_CATEGORIES.length,
       totalSaved,
       activeProducts,

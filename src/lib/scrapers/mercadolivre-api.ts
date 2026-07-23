@@ -85,6 +85,10 @@ export const MLB_CATEGORIES: MLBCategory[] = [
 ]
 
 const MLB_API = 'https://api.mercadolibre.com'
+const API_HEADERS = {
+  'Accept': 'application/json',
+  'User-Agent': 'DimDimIA/1.0',
+}
 
 interface MLBItem {
   id: string
@@ -94,173 +98,152 @@ interface MLBItem {
   currency_id: string
   available_quantity: number
   sold_quantity: number
-  condition: string
   thumbnail: string
   permalink: string
   category_id: string
   official_store_name?: string
-  shipping: {
-    free_shipping: boolean
-    store_pick_up: boolean
-  }
-  seller: {
-    id: number
-    nickname: string
-    real_state: boolean
-  }
-  attributes: Array<{
-    id: string
-    name: string
-    value_name: string | null
-  }>
-  ratings?: {
-    average: number
-    total: number
-  }
+  shipping: { free_shipping: boolean }
+  seller: { id: number; nickname: string }
+  ratings?: { average: number }
+}
+
+interface MLBResponse {
+  paging: { total: number; offset: number; limit: number }
+  results: MLBItem[]
+}
+
+interface MLBItemDetail extends MLBItem {
   prices?: {
-    presentation?: {
-      display_currency?: string
-    }
     prices?: Array<{
       type: string
       amount: number
       regular_amount: number | null
     }>
   }
-  installments?: {
-    quantity: number
-    amount: number
+}
+
+interface MLBSalePrice {
+  amount: number
+  regular_amount: number | null
+  currency_id: string
+}
+
+async function getJSON<T>(url: string): Promise<T | null> {
+  try {
+    const res = await fetch(url, { headers: API_HEADERS })
+    if (!res.ok) return null
+    return res.json()
+  } catch {
+    return null
   }
 }
 
-interface MLBResponse {
-  paging: {
-    total: number
-    offset: number
-    limit: number
+function getOldPrice(detail: MLBItemDetail): number | undefined {
+  if (detail.original_price && detail.original_price > detail.price) {
+    return detail.original_price
   }
-  results: MLBItem[]
-}
-
-const API_HEADERS = {
-  'Accept': 'application/json',
-  'User-Agent': 'DimDimIA/1.0',
-}
-
-function extractOldPrice(item: MLBItem): number | undefined {
-  if (item.original_price && item.original_price > item.price) {
-    return item.original_price
-  }
-
-  if (item.prices?.prices) {
-    for (const p of item.prices.prices) {
+  if (detail.prices?.prices) {
+    for (const p of detail.prices.prices) {
       if (p.regular_amount && p.regular_amount > p.amount) {
         return p.regular_amount
       }
     }
   }
-
   return undefined
 }
 
+function itemToProduct(item: MLBItemDetail): ScrapedProduct | null {
+  const oldPrice = getOldPrice(item)
+  if (!oldPrice) return null
+  return {
+    name: item.title,
+    description: item.title,
+    price: item.price,
+    oldPrice,
+    store: 'Mercado Livre',
+    imageUrl: item.thumbnail?.replace('http:', 'https:') || 'https://via.placeholder.com/200',
+    productUrl: item.permalink,
+    rating: item.ratings?.average || undefined,
+    totalSales: item.sold_quantity || undefined,
+    freeShipping: item.shipping?.free_shipping || false,
+    sellerName: item.seller?.nickname || '',
+    inStock: item.available_quantity > 0,
+  }
+}
+
+async function fetchItemsByIds(ids: string[]): Promise<MLBItemDetail[]> {
+  if (ids.length === 0) return []
+  const CHUNK = 20
+  const all: MLBItemDetail[] = []
+
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const chunk = ids.slice(i, i + CHUNK)
+    const data = await getJSON<{ code: number; body: MLBItemDetail }[]>(
+      `${MLB_API}/items?ids=${chunk.join(',')}`
+    )
+    if (data) {
+      for (const entry of data) {
+        if (entry.code === 200 && entry.body) {
+          all.push(entry.body)
+        }
+      }
+    }
+  }
+
+  return all
+}
+
 export async function scrapeMLByCategory(
-  categorySlug: string,
+  slug: string,
   catId?: string
 ): Promise<ScrapedProduct[]> {
   if (!catId) return []
 
-  const allProducts: ScrapedProduct[] = []
-  const limit = 50
-  const maxResults = 1000
-  const maxPages = Math.ceil(maxResults / limit)
-  let totalItems = 0
-  let promosFound = 0
+  const seenIds = new Set<string>()
+  const searchIds: string[] = []
 
-  for (let page = 0; page < maxPages; page++) {
-    const offset = page * limit
-    const url = `${MLB_API}/sites/MLB/search?category=${catId}&limit=${limit}&offset=${offset}`
+  const base = `${MLB_API}/sites/MLB/search`
+  const queries = [
+    `${base}?category=${catId}&limit=50`,
+    `${base}?category=${catId}&q=OFF&limit=50`,
+    `${base}?category=${catId}&promotion=deals&limit=50`,
+  ]
 
-    try {
-      const res = await fetch(url, { headers: API_HEADERS })
-      if (!res.ok) {
-        console.error(`[ML-API] HTTP ${res.status} for ${catId}`)
-        break
+  for (const url of queries) {
+    const data = await getJSON<MLBResponse>(url)
+    if (!data?.results) continue
+
+    for (const item of data.results) {
+      if (!seenIds.has(item.id)) {
+        seenIds.add(item.id)
+        searchIds.push(item.id)
       }
-
-      const data: MLBResponse = await res.json()
-      const items = data.results || []
-      totalItems += items.length
-
-      for (const item of items) {
-        const oldPrice = extractOldPrice(item)
-        if (!oldPrice) continue
-
-        const discount = Math.round((1 - item.price / oldPrice) * 100)
-        if (discount < 5) continue
-
-        promosFound++
-
-        allProducts.push({
-          name: item.title,
-          description: item.title,
-          price: item.price,
-          oldPrice,
-          store: 'Mercado Livre',
-          imageUrl: item.thumbnail?.replace('http:', 'https:') || 'https://via.placeholder.com/200',
-          productUrl: item.permalink,
-          rating: item.ratings?.average || undefined,
-          totalSales: item.sold_quantity || undefined,
-          freeShipping: item.shipping?.free_shipping || false,
-          sellerName: item.seller?.nickname || '',
-          inStock: item.available_quantity > 0,
-        })
-      }
-
-      if (items.length < limit) break
-    } catch (err) {
-      console.error(`[ML-API] Error fetching ${catId} offset ${offset}:`, err)
-      break
     }
   }
 
-  console.log(`[ML-API] ${catId} (${categorySlug}): ${totalItems} items, ${promosFound} promos`)
-  return allProducts
-}
+  if (searchIds.length === 0) return []
 
-export async function scrapeMLSearch(query: string): Promise<ScrapedProduct[]> {
-  const url = `${MLB_API}/sites/MLB/search?q=${encodeURIComponent(query)}&limit=50`
+  const details = await fetchItemsByIds(searchIds)
   const products: ScrapedProduct[] = []
 
-  try {
-    const res = await fetch(url, { headers: API_HEADERS })
-    if (!res.ok) return []
-
-    const data: MLBResponse = await res.json()
-
-    for (const item of data.results || []) {
-      if (!item.original_price || item.original_price <= item.price) continue
-
-      const discount = Math.round((1 - item.price / item.original_price) * 100)
-      if (discount < 5) continue
-
-      products.push({
-        name: item.title,
-        description: item.title,
-        price: item.price,
-        oldPrice: item.original_price,
-        store: 'Mercado Livre',
-        imageUrl: item.thumbnail?.replace('http:', 'https:') || 'https://via.placeholder.com/200',
-        productUrl: item.permalink,
-        rating: item.ratings?.average || undefined,
-        totalSales: item.sold_quantity || undefined,
-        freeShipping: item.shipping?.free_shipping || false,
-        sellerName: item.seller?.nickname || '',
-        inStock: item.available_quantity > 0,
-      })
-    }
-  } catch (err) {
-    console.error('[ML-API] Search error:', err)
+  for (const detail of details) {
+    const product = itemToProduct(detail)
+    if (product) products.push(product)
   }
 
   return products
+}
+
+export async function scrapeMLSearch(query: string): Promise<ScrapedProduct[]> {
+  const data = await getJSON<MLBResponse>(
+    `${MLB_API}/sites/MLB/search?q=${encodeURIComponent(query)}&limit=50`
+  )
+  if (!data?.results) return []
+
+  const ids = data.results.map(r => r.id)
+  const details = await fetchItemsByIds(ids)
+
+  return details
+    .map(d => itemToProduct(d))
+    .filter(Boolean) as ScrapedProduct[]
 }
