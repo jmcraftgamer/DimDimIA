@@ -85,18 +85,14 @@ export async function GET() {
   const processed: string[] = []
 
   try {
-    let state = await prisma.cronState.findUnique({ where: { id: 'default' } })
-    if (!state) {
-      state = await prisma.cronState.create({ data: { id: 'default' } })
-    }
+    const minutesSinceEpoch = Math.floor(Date.now() / 60000)
+    const batchSize = 3
+    const groupsPerCycle = Math.ceil(MLB_CATEGORIES.length / batchSize)
+    const groupIdx = minutesSinceEpoch % groupsPerCycle
+    const startIdx = groupIdx * batchSize % MLB_CATEGORIES.length
 
-    const raw = state.pendingApifyRun as any || {}
-    let mlIdx = typeof raw.mlIdx === 'number' ? raw.mlIdx : 0
-
-    const mlBatch = 3
-
-    for (let b = 0; b < mlBatch; b++) {
-      const mlCat = MLB_CATEGORIES[(mlIdx + b) % MLB_CATEGORIES.length]
+    for (let b = 0; b < batchSize; b++) {
+      const mlCat = MLB_CATEGORIES[(startIdx + b) % MLB_CATEGORIES.length]
       if (!mlCat) continue
 
       try {
@@ -111,19 +107,13 @@ export async function GET() {
       }
     }
 
-    mlIdx += mlBatch
-
-    await prisma.cronState.update({
-      where: { id: 'default' },
-      data: { pendingApifyRun: { mlIdx }, updatedAt: new Date() },
-    })
-
     const activeProducts = await prisma.product.count({ where: { isActive: true } })
 
     return NextResponse.json({
       success: true,
       processed,
-      mlIdx,
+      startIdx,
+      groupIdx,
       totalCategories: MLB_CATEGORIES.length,
       totalSaved,
       activeProducts,
