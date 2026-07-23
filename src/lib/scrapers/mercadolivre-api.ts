@@ -104,7 +104,9 @@ export async function scrapeMLByCategory(
 ): Promise<ScrapedProduct[]> {
   if (!catId) return []
 
-  const url = `https://www.mercadolivre.com.br/ofertas?page=1`
+  const catIdx = MLB_CATEGORIES.findIndex(c => c.id === catId)
+  const page = (catIdx % 20) + 1
+  const url = `https://www.mercadolivre.com.br/ofertas?page=${page}`
 
   try {
     const { data } = await axios.get(url, { headers: HEADERS, timeout: 20000 })
