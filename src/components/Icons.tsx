@@ -34,14 +34,11 @@ export function ChatIcon(props: IconProps) {
 export function StoreIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M2 3h20l-2 16H4L2 3z" />
-      <path d="M6 9h12" />
-      <path d="M8 13h8" />
-      <circle cx="8" cy="19" r="1" />
-      <circle cx="16" cy="19" r="1" />
-      <path d="M8 19v-6" />
-      <path d="M16 19v-6" />
-      <path d="M12 9v10" />
+      <path d="M2 4h3l1 3h14l-2 10H6L4 7" />
+      <circle cx="7" cy="20" r="1.5" />
+      <circle cx="17" cy="20" r="1.5" />
+      <path d="M9 4l1 3" />
+      <path d="M15 4l-1 3" />
     </Icon>
   )
 }
