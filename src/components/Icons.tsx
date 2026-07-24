@@ -13,7 +13,9 @@ function Icon({ children, size = 22, ...props }: IconProps & { children: React.R
 export function HomeIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M3 12l2-2m0 0l7-7 7 7m-9 2v8m4-8v8m5-4v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4" />
+      <path d="M3 10.5V20a1 1 0 001 1h5v-6h6v6h5a1 1 0 001-1v-9.5" />
+      <path d="M2 10l10-8 10 8" />
+      <path d="M7 3v2l3-2.5" />
     </Icon>
   )
 }
@@ -21,7 +23,10 @@ export function HomeIcon(props: IconProps) {
 export function ChatIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+      <path d="M21 12a9 9 0 01-9 9c-1.5 0-2.9-.35-4.15-.95L3 21l1.95-4.85A8.97 8.97 0 013 12a9 9 0 019-9 9 9 0 019 9z" />
+      <circle cx="9" cy="12" r=".5" fill="currentColor" />
+      <circle cx="12" cy="12" r=".5" fill="currentColor" />
+      <circle cx="15" cy="12" r=".5" fill="currentColor" />
     </Icon>
   )
 }
@@ -29,8 +34,14 @@ export function ChatIcon(props: IconProps) {
 export function StoreIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M3 3h18v2H3V3zm0 4h18v2H3V7zm0 4h18v2H3v-2zm0 4h18v2H3v-2zm0 4h18v2H3v-2z" />
-      <path d="M21 7l-1 14H4L3 7" />
+      <path d="M2 3h20l-2 16H4L2 3z" />
+      <path d="M6 9h12" />
+      <path d="M8 13h8" />
+      <circle cx="8" cy="19" r="1" />
+      <circle cx="16" cy="19" r="1" />
+      <path d="M8 19v-6" />
+      <path d="M16 19v-6" />
+      <path d="M12 9v10" />
     </Icon>
   )
 }
@@ -38,7 +49,12 @@ export function StoreIcon(props: IconProps) {
 export function MonitorIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M13 17V9m-4 8V5m8 12V3M3 21h18" />
+      <rect x="3" y="4" width="18" height="12" rx="2" />
+      <path d="M3 18h18" />
+      <path d="M8 22h8" />
+      <path d="M12 18v4" />
+      <path d="M7 8l3 4-3 4" />
+      <path d="M17 8l-3 4 3 4" />
     </Icon>
   )
 }
@@ -47,7 +63,14 @@ export function StatusIcon(props: IconProps) {
   return (
     <Icon {...props}>
       <path d="M3 21h18" />
-      <path d="M6 18V9m4 9V6m4 12v-6m4 6V3" />
+      <path d="M5 21V14" />
+      <path d="M9 21V10" />
+      <path d="M13 21V6" />
+      <path d="M17 21V3" />
+      <circle cx="5" cy="12" r="1" fill="currentColor" />
+      <circle cx="9" cy="8" r="1" fill="currentColor" />
+      <circle cx="13" cy="4" r="1" fill="currentColor" />
+      <circle cx="17" cy="1" r="1" fill="currentColor" />
     </Icon>
   )
 }
@@ -55,9 +78,10 @@ export function StatusIcon(props: IconProps) {
 export function LoginIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4" />
-      <path d="M10 17l5-5-5-5" />
-      <path d="M15 12H3" />
+      <path d="M14 4h5a2 2 0 012 2v12a2 2 0 01-2 2h-5" />
+      <path d="M9 8l-4 4 4 4" />
+      <path d="M5 12h10" />
+      <path d="M16 2v20" strokeOpacity={0.2} />
     </Icon>
   )
 }
@@ -237,6 +261,4 @@ export const CATEGORY_ICONS: Record<string, (props: IconProps) => React.ReactNod
   audio: AudioIcon,
 }
 
-export function homeIcon(s: number = 22) { return HomeIcon }
-export function chatIcon(s: number = 22) { return ChatIcon }
-export function storeIcon(s: number = 22) { return StoreIcon }
+

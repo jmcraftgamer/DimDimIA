@@ -27,8 +27,8 @@ export default function Sidebar() {
   return (
     <>
       <nav className="fixed left-0 top-0 bottom-0 w-14 z-40 flex flex-col items-center pt-3">
-        <Link href="/inicio" className="no-underline">
-          <span className="font-display text-lg font-black text-[#1a1a1a] tracking-tight">D</span>
+        <Link href="/inicio" className="no-underline flex flex-col items-center leading-none">
+          <span className="font-display text-[9px] font-black text-[#1a1a1a] tracking-tighter">DimDimIA</span>
         </Link>
 
         <div className="flex flex-col items-center gap-0.5 mt-6">
