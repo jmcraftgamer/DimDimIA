@@ -21,6 +21,7 @@ interface ProductCardProps {
     score?: number | null
     reason?: string | null
   }
+  variant?: 'full' | 'carousel'
 }
 
 const storeColors: Record<string, string> = {
@@ -33,10 +34,12 @@ const storeColors: Record<string, string> = {
   'TerabyteShop': 'bg-purple-100 text-purple-800',
 }
 
-export default function ProductCard({ product }: ProductCardProps) {
+export default function ProductCard({ product, variant = 'full' }: ProductCardProps) {
   const discount = product.oldPrice && product.oldPrice > product.price
     ? Math.round((1 - product.price / product.oldPrice) * 100)
     : null
+
+  const isCarousel = variant === 'carousel'
 
   return (
     <a
@@ -57,32 +60,32 @@ export default function ProductCard({ product }: ProductCardProps) {
           />
         )}
         {discount && (
-          <span className="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-md">
+          <span className={`absolute top-1.5 left-1.5 ${isCarousel ? 'text-[10px] px-1' : 'text-xs px-2'} font-bold py-0.5 rounded-md bg-red-500 text-white`}>
             -{discount}%
           </span>
         )}
-        <span className={`absolute top-2 right-2 text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${storeColors[product.store] || 'bg-gray-100 text-gray-800'}`}>
+        <span className={`absolute top-1.5 right-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${storeColors[product.store] || 'bg-gray-100 text-gray-800'}`}>
           {product.store}
         </span>
       </div>
 
-      <div className="p-3 space-y-1.5 flex flex-col flex-1">
-        <h3 className="text-sm font-medium leading-tight line-clamp-2 group-hover:text-gray-600 transition-colors">
+      <div className={`${isCarousel ? 'p-2' : 'p-3'} space-y-1 flex flex-col flex-1`}>
+        <h3 className={`${isCarousel ? 'text-xs' : 'text-sm'} font-medium leading-tight line-clamp-2 group-hover:text-gray-600 transition-colors`}>
           {product.name}
         </h3>
 
-        <div className="flex items-baseline gap-1.5">
-          <span className="text-lg font-bold text-[#1a1a1a]">
+        <div className="flex items-baseline gap-1">
+          <span className={`${isCarousel ? 'text-sm' : 'text-lg'} font-bold text-[#1a1a1a]`}>
             R$ {product.price.toFixed(2)}
           </span>
           {product.oldPrice && product.oldPrice > product.price && (
-            <span className="text-xs text-gray-400 line-through">
+            <span className="text-[10px] text-gray-400 line-through">
               R$ {product.oldPrice.toFixed(2)}
             </span>
           )}
         </div>
 
-        {product.coupon && (
+        {!isCarousel && product.coupon && (
           <div className="bg-green-50 border border-green-200 rounded-lg px-2 py-1">
             <span className="text-[11px] font-semibold text-green-700">
               Cupom: {product.coupon}
@@ -95,29 +98,25 @@ export default function ProductCard({ product }: ProductCardProps) {
           </div>
         )}
 
-        {product.reason && (
-          <p className="text-[11px] text-gray-500 italic leading-tight line-clamp-1">
-            {product.reason}
-          </p>
+        {!isCarousel && (
+          <div className="flex items-center gap-2 text-[11px] text-gray-500 flex-wrap">
+            {product.rating && (
+              <span className="flex items-center gap-0.5">
+                <svg className="w-3 h-3 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                </svg>
+                {product.rating.toFixed(1)}
+              </span>
+            )}
+            {product.freeShipping && (
+              <span className="text-green-600 font-medium">Frete Grátis</span>
+            )}
+          </div>
         )}
 
-        <div className="flex items-center gap-2 text-[11px] text-gray-500 flex-wrap">
-          {product.rating && (
-            <span className="flex items-center gap-0.5">
-              <svg className="w-3 h-3 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-              </svg>
-              {product.rating.toFixed(1)}
-            </span>
-          )}
-          {product.freeShipping && (
-            <span className="text-green-600 font-medium">Frete Grátis</span>
-          )}
-        </div>
-
         <div className="mt-auto pt-1">
-          <span className="block w-full text-center text-xs font-semibold bg-[#1a1a1a] text-white rounded-lg py-2 group-hover:bg-gray-800 transition-colors">
-            Comprar
+          <span className={`block w-full text-center font-semibold bg-[#1a1a1a] text-white rounded-lg transition-colors ${isCarousel ? 'text-[10px] py-1.5' : 'text-xs py-2'} group-hover:bg-gray-800`}>
+            {isCarousel ? 'Ver' : 'Comprar'}
           </span>
         </div>
       </div>

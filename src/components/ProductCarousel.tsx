@@ -44,22 +44,22 @@ export default function ProductCarousel({ title, products, loading }: ProductCar
         </button>
 
         {loading ? (
-          <div className="flex gap-3 overflow-hidden">
+          <div className="flex gap-2 overflow-hidden">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="min-w-[180px] sm:min-w-[200px] bg-[#f8f8f8] rounded-xl animate-pulse shrink-0">
+              <div key={i} className="min-w-[140px] sm:min-w-[160px] bg-[#f8f8f8] rounded-xl animate-pulse shrink-0">
                 <div className="aspect-square" />
-                <div className="p-3 space-y-2">
-                  <div className="h-4 bg-[#e5e5e5] rounded w-3/4" />
-                  <div className="h-4 bg-[#e5e5e5] rounded w-1/2" />
+                <div className="p-2 space-y-2">
+                  <div className="h-3 bg-[#e5e5e5] rounded w-3/4" />
+                  <div className="h-3 bg-[#e5e5e5] rounded w-1/2" />
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <div ref={scrollRef} className="flex gap-3 overflow-x-auto scrollbar-hide pb-1 items-stretch">
+          <div ref={scrollRef} className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 items-stretch">
             {products.map((product: any) => (
-              <div key={product.id || product.name + product.store} className="min-w-[180px] sm:min-w-[200px] shrink-0">
-                <ProductCard product={product} />
+              <div key={product.id || product.name + product.store} className="min-w-[140px] sm:min-w-[160px] shrink-0">
+                <ProductCard product={product} variant="carousel" />
               </div>
             ))}
           </div>
