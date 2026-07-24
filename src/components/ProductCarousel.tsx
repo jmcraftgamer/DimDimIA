@@ -18,8 +18,10 @@ export default function ProductCarousel({ title, products, loading }: ProductCar
     scrollRef.current.scrollBy({ left: dir === 'left' ? -amount : amount, behavior: 'smooth' })
   }
 
+  if (!loading && products.length === 0) return null
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <h3 className="text-sm font-semibold text-[#1a1a1a]">{title}</h3>
       <div className="relative group">
         <button
@@ -42,26 +44,21 @@ export default function ProductCarousel({ title, products, loading }: ProductCar
         </button>
 
         {loading ? (
-          <div className="flex gap-3 overflow-hidden">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="min-w-[160px] sm:min-w-[180px] bg-[#f8f8f8] rounded-xl animate-pulse shrink-0">
+          <div className="flex gap-2 overflow-hidden">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="min-w-[140px] sm:min-w-[150px] bg-[#f8f8f8] rounded-xl animate-pulse shrink-0">
                 <div className="aspect-square" />
-                <div className="p-3 space-y-2">
-                  <div className="h-4 bg-[#e5e5e5] rounded w-3/4" />
-                  <div className="h-4 bg-[#e5e5e5] rounded w-1/2" />
+                <div className="p-2 space-y-1.5">
+                  <div className="h-3 bg-[#e5e5e5] rounded w-3/4" />
+                  <div className="h-3 bg-[#e5e5e5] rounded w-1/2" />
                 </div>
               </div>
             ))}
           </div>
-        ) : products.length === 0 ? null : (
-          <div
-            ref={scrollRef}
-            className="flex gap-3 overflow-x-auto scrollbar-hide pb-1"
-          >
+        ) : (
+          <div ref={scrollRef} className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
             {products.map((product: any) => (
-              <div key={product.id || product.name + product.store} className="min-w-[160px] sm:min-w-[180px] shrink-0">
-                <ProductCard product={product} />
-              </div>
+              <ProductCard key={product.id || product.name + product.store} product={product} compact />
             ))}
           </div>
         )}
