@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { Inter, Playfair_Display } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from '../components/SessionProvider'
-import Header from '../components/Header'
+import Sidebar from '../components/Header'
 import BackgroundScraper from '../components/BackgroundScraper'
 
 const inter = Inter({
@@ -32,17 +32,10 @@ export default function RootLayout({
     <html lang="pt-BR" className={`${inter.variable} ${playfair.variable}`}>
       <body className="min-h-screen bg-white text-[#1a1a1a] antialiased">
         <AuthProvider>
-          <div className="flex flex-col min-h-screen">
-            <Header />
-            <main className="flex-1">
-              {children}
-            </main>
-            <footer className="border-t border-[#e5e5e5] py-6 px-4">
-              <div className="max-w-6xl mx-auto text-center text-sm text-gray-500">
-                DimDimIA © 2026 - Encontrando as melhores promoções para você
-              </div>
-            </footer>
-          </div>
+          <Sidebar />
+          <main className="pl-14">
+            {children}
+          </main>
           <BackgroundScraper />
         </AuthProvider>
       </body>

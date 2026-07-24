@@ -20,7 +20,7 @@ export default function InicioPage() {
     <div>
       <ChatBox embedded />
 
-      <section className="max-w-6xl mx-auto px-4 py-12 border-t border-[#e5e5e5] mt-8">
+      <section className="max-w-6xl mx-auto px-4 py-12">
         <h2 className="text-2xl font-bold text-[#1a1a1a] mb-2">
           Melhores Promoções em Destaque
         </h2>

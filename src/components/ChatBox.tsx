@@ -145,7 +145,7 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
   }
 
   const initialInput = !hasMessages && (
-    <div className="w-full max-w-xl mx-auto">
+    <div className="w-full max-w-3xl mx-auto">
       <div className="relative bg-white rounded-3xl border-2 border-[#e5e5e5] shadow-lg p-5 transition-all hover:shadow-xl hover:border-gray-300">
         <textarea
           ref={textareaRef}
@@ -203,7 +203,7 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
   )
 
   const initialPresets = !hasMessages && (
-    <div className="flex flex-wrap gap-2 justify-center max-w-xl mx-auto mt-6">
+    <div className="flex flex-wrap gap-2 justify-center max-w-3xl mx-auto mt-6">
       {PRESET_QUERIES.map((query, i) => (
         <button
           key={i}
