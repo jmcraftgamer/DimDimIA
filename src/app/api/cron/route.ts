@@ -3,9 +3,7 @@ import prisma from '../../../lib/prisma'
 import { ScrapedProduct } from '../../../types'
 import {
   MLB_CATEGORIES,
-  scrapeMLByCategory,
   scrapeMLCategoryListings,
-  scrapeMLApiSearch,
   scrapeMLApiSearchMulti,
 } from '../../../lib/scrapers/mercadolivre-api'
 import { checkSeller } from '../../../lib/whitelist'
@@ -99,33 +97,22 @@ export async function GET() {
   try {
     const t = Math.floor(Date.now() / 60000)
 
-    const ofertasIdx1 = t % MLB_CATEGORIES.length
-    const ofertasIdx2 = (t + 1) % MLB_CATEGORIES.length
+    const listingIdx1 = t % MLB_CATEGORIES.length
+    const listingIdx2 = (t + 1) % MLB_CATEGORIES.length
 
-    for (const idx of [ofertasIdx1, ofertasIdx2]) {
+    for (const idx of [listingIdx1, listingIdx2]) {
       const cat = MLB_CATEGORIES[idx]
       if (!cat) continue
       try {
-        const products = await scrapeMLByCategory(cat.slug, cat.id)
-        processed.push(`Ofertas ${cat.name}: ${products.length} promos`)
+        const products = await scrapeMLCategoryListings(cat.slug, cat.name, 25)
+        processed.push(`Listings ${cat.name}: ${products.length} promos`)
         if (products.length > 0) totalSaved += await saveProducts(products, cat.slug, cat.name)
       } catch (err: any) {
-        processed.push(`Ofertas ${cat.name}: ERRO ${err.message}`)
+        processed.push(`Listings ${cat.name}: ERRO ${err.message}`)
       }
     }
 
-    const listingCat = MLB_CATEGORIES[(ofertasIdx1 + MLB_CATEGORIES.length / 2 | 0) % MLB_CATEGORIES.length]
-    if (listingCat) {
-      try {
-        const products = await scrapeMLCategoryListings(listingCat.slug, listingCat.name, 30)
-        processed.push(`Listings ${listingCat.name}: ${products.length} promos`)
-        if (products.length > 0) totalSaved += await saveProducts(products, listingCat.slug, listingCat.name)
-      } catch (err: any) {
-        processed.push(`Listings ${listingCat.name}: ERRO ${err.message}`)
-      }
-    }
-
-    const apiCat = MLB_CATEGORIES[(t + 3) % MLB_CATEGORIES.length]
+    const apiCat = MLB_CATEGORIES[(t + 2) % MLB_CATEGORIES.length]
     if (apiCat) {
       try {
         const products = await scrapeMLApiSearchMulti(apiCat.id, apiCat.slug)
