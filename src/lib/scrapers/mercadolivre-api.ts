@@ -98,6 +98,8 @@ function parseBRL(text: string): number {
   return isNaN(num) ? 0 : num
 }
 
+const API_BASE = 'https://api.mercadolibre.com/sites/MLB/search'
+
 export async function scrapeMLByCategory(
   slug: string,
   catId?: string
@@ -171,6 +173,60 @@ export async function scrapeMLByCategory(
     console.error(`[ML-Ofertas] ${catId} error: ${err.message}`)
     return []
   }
+}
+
+export async function scrapeMLApiSearch(catId: string): Promise<ScrapedProduct[]> {
+  const products: ScrapedProduct[] = []
+  const seen = new Set<string>()
+
+  for (let offset = 0; offset < 1000; offset += 50) {
+    try {
+      const { data } = await axios.get(API_BASE, {
+        params: {
+          category: catId,
+          offset,
+          limit: 50,
+        },
+        timeout: 15000,
+      })
+
+      if (!data.results?.length) break
+
+      for (const item of data.results) {
+        if (seen.has(item.id)) continue
+        seen.add(item.id)
+
+        const originalPrice = item.original_price
+          ?? item.sale_price?.regular_amount
+          ?? null
+
+        if (!originalPrice || originalPrice <= item.price) continue
+
+        const discount = Math.round((1 - item.price / originalPrice) * 100)
+        if (discount < 5) continue
+
+        products.push({
+          name: item.title,
+          description: item.title,
+          price: item.price,
+          oldPrice: originalPrice,
+          store: 'Mercado Livre',
+          imageUrl: item.thumbnail?.replace(/-I\.jpg/, '-O.jpg') ?? '',
+          productUrl: item.permalink ?? '',
+          freeShipping: item.shipping?.free_shipping ?? false,
+          sellerName: item.seller?.nickname ?? '',
+          inStock: item.available_quantity > 0,
+        })
+      }
+
+      await new Promise(r => setTimeout(r, 300))
+    } catch (err: any) {
+      console.error(`[ML-API] ${catId} offset ${offset}: ${err.message}`)
+      break
+    }
+  }
+
+  return products
 }
 
 export async function scrapeMLSearch(query: string): Promise<ScrapedProduct[]> {

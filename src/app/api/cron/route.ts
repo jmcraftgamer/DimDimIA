@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import prisma from '../../../lib/prisma'
 import { ScrapedProduct } from '../../../types'
-import { MLB_CATEGORIES, scrapeMLByCategory } from '../../../lib/scrapers/mercadolivre-api'
+import { MLB_CATEGORIES, scrapeMLByCategory, scrapeMLApiSearch } from '../../../lib/scrapers/mercadolivre-api'
 import { checkSeller } from '../../../lib/whitelist'
 
 export const maxDuration = 60
@@ -79,6 +79,50 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
   return saved
 }
 
+async function processOfertas(t: number, batchSize: number, processed: string[]): Promise<number> {
+  let saved = 0
+  const groupsPerCycle = Math.ceil(MLB_CATEGORIES.length / batchSize)
+  const groupIdx = t % groupsPerCycle
+  const startIdx = groupIdx * batchSize % MLB_CATEGORIES.length
+
+  for (let b = 0; b < batchSize; b++) {
+    const mlCat = MLB_CATEGORIES[(startIdx + b) % MLB_CATEGORIES.length]
+    if (!mlCat) continue
+
+    try {
+      const products = await scrapeMLByCategory(mlCat.slug, mlCat.id)
+      processed.push(`Ofertas ${mlCat.name}: ${products.length} promos`)
+      if (products.length > 0) {
+        saved += await saveProducts(products, mlCat.slug, mlCat.name)
+      }
+    } catch (err: any) {
+      processed.push(`Ofertas ${mlCat.name}: ERRO ${err.message}`)
+    }
+  }
+  return saved
+}
+
+async function processApiSearch(t: number, batchSize: number, processed: string[]): Promise<number> {
+  let saved = 0
+  const apiIdx = t % MLB_CATEGORIES.length
+
+  for (let b = 0; b < batchSize; b++) {
+    const cat = MLB_CATEGORIES[(apiIdx + b) % MLB_CATEGORIES.length]
+    if (!cat) continue
+
+    try {
+      const products = await scrapeMLApiSearch(cat.id)
+      processed.push(`API ${cat.name}: ${products.length} promos`)
+      if (products.length > 0) {
+        saved += await saveProducts(products, cat.slug, cat.name)
+      }
+    } catch (err: any) {
+      processed.push(`API ${cat.name}: ERRO ${err.message}`)
+    }
+  }
+  return saved
+}
+
 export async function GET() {
   const startTime = Date.now()
   let totalSaved = 0
@@ -86,35 +130,18 @@ export async function GET() {
 
   try {
     const t = Math.floor(Date.now() / 60000)
-    const batchSize = 3
-    const groupsPerCycle = Math.ceil(MLB_CATEGORIES.length / batchSize)
-    const groupIdx = t % groupsPerCycle
-    const startIdx = groupIdx * batchSize % MLB_CATEGORIES.length
 
-    for (let b = 0; b < batchSize; b++) {
-      const mlCat = MLB_CATEGORIES[(startIdx + b) % MLB_CATEGORIES.length]
-      if (!mlCat) continue
+    const ofertasSaved = await processOfertas(t, 3, processed)
+    totalSaved += ofertasSaved
 
-      try {
-        const products = await scrapeMLByCategory(mlCat.slug, mlCat.id)
-        processed.push(`${mlCat.name} (${mlCat.id}): ${products.length} promos`)
-        if (products.length > 0) {
-          const saved = await saveProducts(products, mlCat.slug, mlCat.name)
-          totalSaved += saved
-        }
-      } catch (err: any) {
-        processed.push(`${mlCat.name}: ERRO ${err.message}`)
-      }
-    }
+    const apiSaved = await processApiSearch(t, 2, processed)
+    totalSaved += apiSaved
 
     const activeProducts = await prisma.product.count({ where: { isActive: true } })
 
     return NextResponse.json({
       success: true,
       processed,
-      startIdx,
-      groupIdx,
-      totalCategories: MLB_CATEGORIES.length,
       totalSaved,
       activeProducts,
       elapsedMs: Date.now() - startTime,
