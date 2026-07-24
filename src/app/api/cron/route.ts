@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server'
 import prisma from '../../../lib/prisma'
 import { ScrapedProduct } from '../../../types'
-import { MLB_CATEGORIES, scrapeMLByCategory, scrapeMLApiSearch } from '../../../lib/scrapers/mercadolivre-api'
+import {
+  MLB_CATEGORIES,
+  scrapeMLByCategory,
+  scrapeMLCategoryListings,
+  scrapeMLApiSearch,
+  scrapeMLApiSearchMulti,
+} from '../../../lib/scrapers/mercadolivre-api'
 import { checkSeller } from '../../../lib/whitelist'
 
 export const maxDuration = 60
@@ -79,50 +85,6 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
   return saved
 }
 
-async function processOfertas(t: number, batchSize: number, processed: string[]): Promise<number> {
-  let saved = 0
-  const groupsPerCycle = Math.ceil(MLB_CATEGORIES.length / batchSize)
-  const groupIdx = t % groupsPerCycle
-  const startIdx = groupIdx * batchSize % MLB_CATEGORIES.length
-
-  for (let b = 0; b < batchSize; b++) {
-    const mlCat = MLB_CATEGORIES[(startIdx + b) % MLB_CATEGORIES.length]
-    if (!mlCat) continue
-
-    try {
-      const products = await scrapeMLByCategory(mlCat.slug, mlCat.id)
-      processed.push(`Ofertas ${mlCat.name}: ${products.length} promos`)
-      if (products.length > 0) {
-        saved += await saveProducts(products, mlCat.slug, mlCat.name)
-      }
-    } catch (err: any) {
-      processed.push(`Ofertas ${mlCat.name}: ERRO ${err.message}`)
-    }
-  }
-  return saved
-}
-
-async function processApiSearch(t: number, batchSize: number, processed: string[]): Promise<number> {
-  let saved = 0
-  const apiIdx = t % MLB_CATEGORIES.length
-
-  for (let b = 0; b < batchSize; b++) {
-    const cat = MLB_CATEGORIES[(apiIdx + b) % MLB_CATEGORIES.length]
-    if (!cat) continue
-
-    try {
-      const products = await scrapeMLApiSearch(cat.id)
-      processed.push(`API ${cat.name}: ${products.length} promos`)
-      if (products.length > 0) {
-        saved += await saveProducts(products, cat.slug, cat.name)
-      }
-    } catch (err: any) {
-      processed.push(`API ${cat.name}: ERRO ${err.message}`)
-    }
-  }
-  return saved
-}
-
 export async function GET() {
   const startTime = Date.now()
   let totalSaved = 0
@@ -131,11 +93,42 @@ export async function GET() {
   try {
     const t = Math.floor(Date.now() / 60000)
 
-    const ofertasSaved = await processOfertas(t, 3, processed)
-    totalSaved += ofertasSaved
+    const ofertasIdx1 = t % MLB_CATEGORIES.length
+    const ofertasIdx2 = (t + 1) % MLB_CATEGORIES.length
 
-    const apiSaved = await processApiSearch(t, 2, processed)
-    totalSaved += apiSaved
+    for (const idx of [ofertasIdx1, ofertasIdx2]) {
+      const cat = MLB_CATEGORIES[idx]
+      if (!cat) continue
+      try {
+        const products = await scrapeMLByCategory(cat.slug, cat.id)
+        processed.push(`Ofertas ${cat.name}: ${products.length} promos`)
+        if (products.length > 0) totalSaved += await saveProducts(products, cat.slug, cat.name)
+      } catch (err: any) {
+        processed.push(`Ofertas ${cat.name}: ERRO ${err.message}`)
+      }
+    }
+
+    const listingCat = MLB_CATEGORIES[(ofertasIdx1 + MLB_CATEGORIES.length / 2 | 0) % MLB_CATEGORIES.length]
+    if (listingCat) {
+      try {
+        const products = await scrapeMLCategoryListings(listingCat.slug, listingCat.name, 30)
+        processed.push(`Listings ${listingCat.name}: ${products.length} promos`)
+        if (products.length > 0) totalSaved += await saveProducts(products, listingCat.slug, listingCat.name)
+      } catch (err: any) {
+        processed.push(`Listings ${listingCat.name}: ERRO ${err.message}`)
+      }
+    }
+
+    const apiCat = MLB_CATEGORIES[(t + 3) % MLB_CATEGORIES.length]
+    if (apiCat) {
+      try {
+        const products = await scrapeMLApiSearchMulti(apiCat.id, apiCat.slug)
+        processed.push(`API-Multi ${apiCat.name}: ${products.length} promos`)
+        if (products.length > 0) totalSaved += await saveProducts(products, apiCat.slug, apiCat.name)
+      } catch (err: any) {
+        processed.push(`API-Multi ${apiCat.name}: ERRO ${err.message}`)
+      }
+    }
 
     const activeProducts = await prisma.product.count({ where: { isActive: true } })
 
