@@ -21,7 +21,6 @@ interface ProductCardProps {
     score?: number | null
     reason?: string | null
   }
-  compact?: boolean
 }
 
 const storeColors: Record<string, string> = {
@@ -34,72 +33,40 @@ const storeColors: Record<string, string> = {
   'TerabyteShop': 'bg-purple-100 text-purple-800',
 }
 
-export default function ProductCard({ product, compact }: ProductCardProps) {
+export default function ProductCard({ product }: ProductCardProps) {
   const discount = product.oldPrice && product.oldPrice > product.price
     ? Math.round((1 - product.price / product.oldPrice) * 100)
     : null
-
-  const img = (
-    <div className="relative aspect-square bg-[#f8f8f8] overflow-hidden">
-      {product.imageUrl && (
-        <Image
-          src={product.imageUrl}
-          alt={product.name}
-          fill
-          className="object-contain p-3 group-hover:scale-105 transition-transform duration-300"
-          sizes="(max-width: 768px) 100vw, 300px"
-          unoptimized
-        />
-      )}
-      {discount && (
-        <span className="absolute top-1.5 left-1.5 bg-red-500 text-white text-[11px] font-bold px-1.5 py-0.5 rounded-md">
-          -{discount}%
-        </span>
-      )}
-      <span className={`absolute top-1.5 right-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${storeColors[product.store] || 'bg-gray-100 text-gray-800'}`}>
-        {product.store}
-      </span>
-    </div>
-  )
-
-  if (compact) {
-    return (
-      <a
-        href={product.productUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="product-card block bg-white rounded-xl border border-[#e5e5e5] overflow-hidden no-underline text-inherit group w-[140px] sm:w-[150px]"
-      >
-        {img}
-        <div className="p-2 space-y-1">
-          <h3 className="text-xs font-medium leading-tight line-clamp-1 group-hover:text-gray-600 transition-colors">
-            {product.name}
-          </h3>
-          <div className="flex items-baseline gap-1">
-            <span className="text-sm font-bold text-[#1a1a1a]">
-              R$ {product.price.toFixed(2)}
-            </span>
-            {product.oldPrice && product.oldPrice > product.price && (
-              <span className="text-[10px] text-gray-400 line-through">
-                R$ {product.oldPrice.toFixed(2)}
-              </span>
-            )}
-          </div>
-        </div>
-      </a>
-    )
-  }
 
   return (
     <a
       href={product.productUrl}
       target="_blank"
       rel="noopener noreferrer"
-      className="product-card block bg-white rounded-xl border border-[#e5e5e5] overflow-hidden no-underline text-inherit group"
+      className="product-card flex flex-col bg-white rounded-xl border border-[#e5e5e5] overflow-hidden no-underline text-inherit group h-full"
     >
-      {img}
+      <div className="relative aspect-square bg-[#f8f8f8] overflow-hidden shrink-0">
+        {product.imageUrl && (
+          <Image
+            src={product.imageUrl}
+            alt={product.name}
+            fill
+            className="object-contain p-3 group-hover:scale-105 transition-transform duration-300"
+            sizes="(max-width: 768px) 100vw, 300px"
+            unoptimized
+          />
+        )}
+        {discount && (
+          <span className="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-md">
+            -{discount}%
+          </span>
+        )}
+        <span className={`absolute top-2 right-2 text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${storeColors[product.store] || 'bg-gray-100 text-gray-800'}`}>
+          {product.store}
+        </span>
+      </div>
 
-      <div className="p-3 space-y-1.5">
+      <div className="p-3 space-y-1.5 flex flex-col flex-1">
         <h3 className="text-sm font-medium leading-tight line-clamp-2 group-hover:text-gray-600 transition-colors">
           {product.name}
         </h3>
@@ -129,12 +96,12 @@ export default function ProductCard({ product, compact }: ProductCardProps) {
         )}
 
         {product.reason && (
-          <p className="text-[11px] text-gray-500 italic leading-tight line-clamp-2">
+          <p className="text-[11px] text-gray-500 italic leading-tight line-clamp-1">
             {product.reason}
           </p>
         )}
 
-        <div className="flex items-center gap-2 text-[11px] text-gray-500">
+        <div className="flex items-center gap-2 text-[11px] text-gray-500 flex-wrap">
           {product.rating && (
             <span className="flex items-center gap-0.5">
               <svg className="w-3 h-3 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
@@ -143,15 +110,12 @@ export default function ProductCard({ product, compact }: ProductCardProps) {
               {product.rating.toFixed(1)}
             </span>
           )}
-          {product.totalSales && (
-            <span>{product.totalSales} vendidos</span>
-          )}
           {product.freeShipping && (
             <span className="text-green-600 font-medium">Frete Grátis</span>
           )}
         </div>
 
-        <div className="pt-1">
+        <div className="mt-auto pt-1">
           <span className="block w-full text-center text-xs font-semibold bg-[#1a1a1a] text-white rounded-lg py-2 group-hover:bg-gray-800 transition-colors">
             Comprar
           </span>
