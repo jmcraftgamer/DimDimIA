@@ -4,7 +4,11 @@ import { useState, useRef, useEffect } from 'react'
 import { ChatMessage, PRESET_QUERIES } from '../types'
 import ProductCard from './ProductCard'
 
-export default function ChatBox() {
+interface ChatBoxProps {
+  embedded?: boolean
+}
+
+export default function ChatBox({ embedded }: ChatBoxProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -321,9 +325,9 @@ export default function ChatBox() {
   )
 
   return (
-    <div className={`flex flex-col ${hasMessages ? 'h-screen' : 'min-h-screen'}`}>
+    <div className={`flex flex-col ${embedded ? '' : hasMessages ? 'h-screen' : 'min-h-screen'}`}>
       {!hasMessages && (
-        <div className="flex-1 flex flex-col items-center justify-center px-4 pt-24 pb-12">
+        <div className={`flex flex-col items-center justify-center px-4 ${embedded ? 'py-12' : 'flex-1 pt-24 pb-12'}`}>
           <h1 className="font-display text-7xl md:text-9xl font-black gradient-text mb-3 tracking-tight">
             DimDimIA
           </h1>

@@ -11,6 +11,7 @@ export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false)
 
   const navLinks = [
+    { href: '/inicio', label: 'Início', icon: '🏠' },
     { href: '/', label: 'Chat IA', icon: '💬' },
     { href: '/store', label: 'Loja', icon: '🏪' },
     { href: '/monitor', label: 'Monitorar', icon: '📊' },
