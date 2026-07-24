@@ -33,6 +33,11 @@ async function saveOrGetSeller(sellerName: string, store: string): Promise<strin
   return seller.id
 }
 
+function calcDesirability(discount: number, position?: number): number {
+  const popularityBoost = position !== undefined ? Math.max(0, 1 - position / 1000) * 60 : 0
+  return Math.round(discount * 0.4 + popularityBoost)
+}
+
 async function saveProducts(products: ScrapedProduct[], catSlug: string, subName: string): Promise<number> {
   let saved = 0
   for (const p of products) {
@@ -40,6 +45,7 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
     if (!p.oldPrice || p.oldPrice <= p.price) continue
     const discount = Math.round((1 - p.price / p.oldPrice) * 100)
     if (discount < 5) continue
+    const desirability = calcDesirability(discount, p.position)
 
     try {
       const id = buildProductId(p.store, p.productUrl, p.name)
@@ -57,7 +63,7 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
             tax: p.tax ?? existing.tax, category: catSlug, subcategory: subName,
             isActive: true, isPromoted: true,
             sellerId: sellerId ?? existing.sellerId, lastVerified: new Date(),
-            score: discount,
+            score: desirability, position: p.position ?? existing.position,
             reason: `${discount}% OFF`,
           },
         })
@@ -74,7 +80,7 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
             couponCode: p.couponCode ?? null, tax: p.tax ?? null,
             isActive: true, isPromoted: true,
             inStock: p.inStock !== false, sellerId: sellerId ?? null, lastVerified: new Date(),
-            score: discount,
+            score: desirability, position: p.position ?? null,
             reason: `${discount}% OFF`,
           },
         })

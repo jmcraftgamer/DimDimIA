@@ -343,7 +343,8 @@ export async function scrapeMLApiSearch(catId: string): Promise<ScrapedProduct[]
 
       if (!data.results?.length) break
 
-      for (const item of data.results) {
+      for (let i = 0; i < data.results.length; i++) {
+        const item = data.results[i]
         if (seen.has(item.id)) continue
         seen.add(item.id)
 
@@ -364,6 +365,7 @@ export async function scrapeMLApiSearch(catId: string): Promise<ScrapedProduct[]
           freeShipping: item.shipping?.free_shipping ?? false,
           sellerName: item.seller?.nickname ?? '',
           inStock: item.available_quantity > 0,
+          position: offset + i,
         })
       }
 
@@ -410,7 +412,8 @@ export async function scrapeMLApiSearchMulti(catId: string, catSlug: string): Pr
           const { data } = await axios.get(API_BASE, { params, timeout: 15000 })
           if (!data.results?.length) break
 
-          for (const item of data.results) {
+          for (let i = 0; i < data.results.length; i++) {
+            const item = data.results[i]
             if (seen.has(item.id)) continue
             seen.add(item.id)
 
@@ -431,6 +434,7 @@ export async function scrapeMLApiSearchMulti(catId: string, catSlug: string): Pr
               freeShipping: item.shipping?.free_shipping ?? false,
               sellerName: item.seller?.nickname ?? '',
               inStock: item.available_quantity > 0,
+              position: offset + i,
             })
           }
 

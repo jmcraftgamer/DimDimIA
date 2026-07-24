@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
         where,
         orderBy: [
           { score: { sort: 'desc', nulls: 'last' } },
-          { price: 'asc' },
+          { position: { sort: 'asc', nulls: 'last' } },
         ],
         skip: offset,
         take: limit,
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
         where,
         orderBy: [
           { score: { sort: 'desc', nulls: 'last' } },
-          { price: 'asc' },
+          { position: { sort: 'asc', nulls: 'last' } },
         ],
         take: 500,
       }),
