@@ -1,129 +1,180 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import ProductCard from './ProductCard'
+import ProductCarousel from './ProductCarousel'
 import CategoryNav from './CategoryNav'
+import { CATEGORIES, SUBCATEGORIES } from '../types'
 
-const PAGE_SIZE = 500
+const CAROUSEL_LIMIT = 12
 
 interface ProductGridProps {
   initialCategory?: string
 }
 
 export default function ProductGrid({ initialCategory = '' }: ProductGridProps) {
-  const [products, setProducts] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
+  const [carousels, setCarousels] = useState<Record<string, any[]>>({})
+  const [loading, setLoading] = useState<Record<string, boolean>>({})
   const [category, setCategory] = useState(initialCategory)
   const [subcategory, setSubcategory] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
-  const [offset, setOffset] = useState(0)
-  const [total, setTotal] = useState(0)
-  const [hasMore, setHasMore] = useState(true)
   const [initialLoaded, setInitialLoaded] = useState(false)
-  const sentinelRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const debounceRef = useRef<NodeJS.Timeout>(undefined)
 
-  const buildParams = useCallback((cat: string, sub: string, sq: string, off: number) => {
-    const params = new URLSearchParams()
-    if (cat) params.set('category', cat)
-    if (sq) params.set('q', sq)
-    params.set('offset', off.toString())
-    params.set('limit', PAGE_SIZE.toString())
-    return params
-  }, [])
-
-  const fetchProducts = useCallback(async (cat: string, sub: string, sq: string, off: number, append: boolean) => {
-    if (append) {
-      setLoadingMore(true)
-    } else {
-      setLoading(true)
-    }
+  const fetchCarousel = useCallback(async (key: string, cat: string, q: string) => {
+    setLoading(prev => ({ ...prev, [key]: true }))
     try {
-      const params = buildParams(cat, sub, sq, off)
+      const params = new URLSearchParams()
+      if (cat) params.set('category', cat)
+      if (q) params.set('q', q)
+      params.set('offset', '0')
+      params.set('limit', CAROUSEL_LIMIT.toString())
       const res = await fetch(`/api/products?${params.toString()}`)
       const data = await res.json()
-      if (append) {
-        setProducts(prev => [...prev, ...(data.products || [])])
-      } else {
-        setProducts(data.products || [])
-      }
-      setTotal(data.total || 0)
-      setHasMore((off + PAGE_SIZE) < (data.total || 0))
-      setOffset(off + PAGE_SIZE)
-    } catch (error) {
-      console.error('Error fetching products:', error)
+      setCarousels(prev => ({ ...prev, [key]: data.products || [] }))
+    } catch {
+      setCarousels(prev => ({ ...prev, [key]: [] }))
     } finally {
-      setLoading(false)
-      setLoadingMore(false)
+      setLoading(prev => ({ ...prev, [key]: false }))
       setInitialLoaded(true)
     }
-  }, [buildParams])
+  }, [])
 
-  const triggerSearch = useCallback((cat: string, sub: string, sq: string) => {
-    setProducts([])
-    setOffset(0)
-    setHasMore(true)
-    setInitialLoaded(false)
-    fetchProducts(cat, sub, sq, 0, false)
-  }, [fetchProducts])
+  const loadAllCarousels = useCallback(() => {
+    const keys: { key: string; cat: string; q: string }[] = []
+
+    if (category && subcategory) {
+      keys.push({ key: `${category}-${subcategory}`, cat: category, q: subcategory })
+    } else if (category) {
+      const subs = SUBCATEGORIES[category] || []
+      if (subs.length > 0) {
+        subs.forEach(sub => {
+          keys.push({ key: `${category}-${sub.keyword}`, cat: category, q: sub.keyword })
+        })
+      } else {
+        keys.push({ key: category, cat: category, q: '' })
+      }
+    } else if (searchQuery) {
+      keys.push({ key: 'busca', cat: '', q: searchQuery })
+    } else {
+      CATEGORIES.forEach(cat => {
+        keys.push({ key: cat.slug, cat: cat.slug, q: '' })
+      })
+    }
+
+    keys.forEach(({ key, cat, q }) => {
+      if (!carousels[key]) fetchCarousel(key, cat, q)
+    })
+  }, [category, subcategory, searchQuery, fetchCarousel, carousels])
 
   useEffect(() => {
-    triggerSearch(category, subcategory, searchQuery)
-  }, [category, subcategory, triggerSearch])
-
-  const handleSearchInput = (val: string) => {
-    setSearchQuery(val)
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => {
-      triggerSearch(category, subcategory, val)
-    }, 300)
-  }
-
-  const handleSubcategory = (keyword: string) => {
-    setSubcategory(keyword)
-    if (keyword) {
-      setSearchQuery(keyword)
-    }
-  }
+    setCarousels({})
+    setInitialLoaded(false)
+    loadAllCarousels()
+  }, [category, subcategory, searchQuery])
 
   useEffect(() => {
     const interval = setInterval(() => {
-      fetchProducts(category, subcategory, searchQuery, 0, false)
-    }, 15000)
+      loadAllCarousels()
+    }, 30000)
     return () => clearInterval(interval)
-  }, [category, subcategory, searchQuery, fetchProducts])
+  }, [loadAllCarousels])
 
   useEffect(() => {
     fetch('/api/cron').catch(() => {})
   }, [])
 
-  useEffect(() => {
-    const el = sentinelRef.current
-    if (!el) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loadingMore && !loading) {
-          fetchProducts(category, subcategory, searchQuery, offset, true)
-        }
-      },
-      { rootMargin: '200px' }
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [hasMore, loadingMore, loading, offset, category, subcategory, searchQuery, fetchProducts])
+  const handleSearchInput = (val: string) => {
+    setSearchQuery(val)
+    setCategory('')
+    setSubcategory('')
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      setCarousels({})
+      loadAllCarousels()
+    }, 300)
+  }
+
+  const handleCategorySelect = (slug: string) => {
+    setCategory(slug)
+    setSubcategory('')
+    setSearchQuery('')
+    setCarousels({})
+  }
+
+  const handleSubcategorySelect = (keyword: string) => {
+    setSubcategory(keyword)
+    setSearchQuery('')
+    setCarousels({})
+  }
 
   const clearSearch = () => {
     setSearchQuery('')
     setSubcategory('')
-    searchInputRef.current?.focus()
     setCategory('')
-    triggerSearch('', '', '')
+    setCarousels({})
+    searchInputRef.current?.focus()
+  }
+
+  const renderCarousels = () => {
+    if (searchQuery) {
+      const key = 'busca'
+      return (
+        <ProductCarousel
+          title={`Resultados para "${searchQuery}"`}
+          products={carousels[key] || []}
+          loading={loading[key]}
+        />
+      )
+    }
+
+    if (category && subcategory) {
+      const key = `${category}-${subcategory}`
+      return (
+        <ProductCarousel
+          title={subcategory}
+          products={carousels[key] || []}
+          loading={loading[key]}
+        />
+      )
+    }
+
+    if (category) {
+      const subs = SUBCATEGORIES[category] || []
+      if (subs.length > 0) {
+        return subs.map(sub => {
+          const key = `${category}-${sub.keyword}`
+          return (
+            <ProductCarousel
+              key={key}
+              title={sub.name}
+              products={carousels[key] || []}
+              loading={loading[key]}
+            />
+          )
+        })
+      }
+      return (
+        <ProductCarousel
+          title={CATEGORIES.find(c => c.slug === category)?.name || category}
+          products={carousels[category] || []}
+          loading={loading[category]}
+        />
+      )
+    }
+
+    return CATEGORIES.map(cat => (
+      <ProductCarousel
+        key={cat.slug}
+        title={cat.name}
+        products={carousels[cat.slug] || []}
+        loading={loading[cat.slug]}
+      />
+    ))
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-md">
           <input
@@ -147,36 +198,14 @@ export default function ProductGrid({ initialCategory = '' }: ProductGridProps) 
 
       <CategoryNav
         active={category}
-        onSelect={(s) => { setCategory(s); setSubcategory('') }}
-        onSubcategory={handleSubcategory}
+        onSelect={handleCategorySelect}
+        onSubcategory={handleSubcategorySelect}
         activeSubcategory={subcategory}
       />
 
-      <div className="flex items-center justify-between">
-        <div className="text-xs text-gray-400">
-          {initialLoaded && !loading
-            ? `${total} produtos encontrados`
-            : ''}
-        </div>
-      </div>
-
-      {loading && products.length === 0 ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-          {Array.from({ length: 10 }).map((_, i) => (
-            <div key={i} className="bg-[#f8f8f8] rounded-xl animate-pulse">
-              <div className="aspect-square" />
-              <div className="p-3 space-y-2">
-                <div className="h-4 bg-[#e5e5e5] rounded w-3/4" />
-                <div className="h-4 bg-[#e5e5e5] rounded w-1/2" />
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : products.length === 0 && initialLoaded ? (
+      {initialLoaded && Object.keys(carousels).length === 0 && !Object.values(loading).some(Boolean) ? (
         <div className="text-center py-16">
-          <p className="text-gray-400 text-lg">
-            Nenhum produto encontrado.
-          </p>
+          <p className="text-gray-400 text-lg">Nenhum produto encontrado.</p>
           <button
             onClick={() => window.location.reload()}
             className="mt-4 px-6 py-2 rounded-xl bg-[#1a1a1a] text-white text-sm font-medium hover:bg-gray-800 transition-colors"
@@ -185,25 +214,9 @@ export default function ProductGrid({ initialCategory = '' }: ProductGridProps) 
           </button>
         </div>
       ) : (
-        <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-            {products.map((product: any) => (
-              <ProductCard key={product.id || product.name + product.store} product={product} />
-            ))}
-          </div>
-
-          {loadingMore && (
-            <div className="flex justify-center py-8">
-              <div className="flex gap-1.5">
-                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0ms]" />
-                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:150ms]" />
-                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:300ms]" />
-              </div>
-            </div>
-          )}
-
-          <div ref={sentinelRef} className="h-4" />
-        </>
+        <div className="space-y-6">
+          {renderCarousels()}
+        </div>
       )}
     </div>
   )
