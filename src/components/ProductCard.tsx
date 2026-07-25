@@ -47,13 +47,13 @@ export default function ProductCard({ product, variant = 'full' }: ProductCardPr
         rel="noopener noreferrer"
         className="block bg-white rounded-lg border border-[#e5e5e5] overflow-hidden no-underline text-inherit group w-[110px] sm:w-[125px] h-[250px]"
       >
-        <div className="relative h-[140px] bg-[#f8f8f8] overflow-hidden">
+        <div className="relative h-[170px] bg-[#f8f8f8] overflow-hidden">
           {product.imageUrl && (
             <Image
               src={product.imageUrl}
               alt={product.name}
               fill
-              className="object-contain p-1.5 group-hover:scale-105 transition-transform duration-300"
+              className="object-contain group-hover:scale-105 transition-transform duration-300"
               sizes="200px"
               unoptimized
             />
@@ -64,8 +64,8 @@ export default function ProductCard({ product, variant = 'full' }: ProductCardPr
             </span>
           )}
         </div>
-        <div className="p-2 h-[110px] flex flex-col justify-between">
-          <p className="text-[11px] font-medium leading-tight line-clamp-2 text-[#1a1a1a]">
+        <div className="px-1.5 pb-1.5 h-[80px] flex flex-col justify-center gap-0.5">
+          <p className="text-[10px] font-medium leading-tight line-clamp-2 text-[#1a1a1a]">
             {product.name}
           </p>
           <div>
@@ -73,7 +73,7 @@ export default function ProductCard({ product, variant = 'full' }: ProductCardPr
               R$ {product.price.toFixed(2)}
             </span>
             {product.oldPrice && product.oldPrice > product.price && (
-              <span className="text-[9px] text-gray-400 line-through ml-1">
+              <span className="text-[8px] text-gray-400 line-through ml-1">
                 R$ {product.oldPrice.toFixed(2)}
               </span>
             )}
