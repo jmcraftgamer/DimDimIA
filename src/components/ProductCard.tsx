@@ -45,35 +45,35 @@ export default function ProductCard({ product, variant = 'full' }: ProductCardPr
         href={product.productUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="block bg-white rounded-lg border border-[#e5e5e5] overflow-hidden no-underline text-inherit group h-[170px]"
+        className="block bg-white rounded-lg border border-[#e5e5e5] overflow-hidden no-underline text-inherit group w-[80px] sm:w-[90px] h-[200px]"
       >
-        <div className="relative h-[100px] bg-[#f8f8f8] overflow-hidden">
+        <div className="relative h-[110px] bg-[#f8f8f8] overflow-hidden">
           {product.imageUrl && (
             <Image
               src={product.imageUrl}
               alt={product.name}
               fill
-              className="object-contain p-2 group-hover:scale-105 transition-transform duration-300"
+              className="object-contain p-1.5 group-hover:scale-105 transition-transform duration-300"
               sizes="200px"
               unoptimized
             />
           )}
           {discount && (
-            <span className="absolute top-1 left-1 text-[8px] font-bold px-1 py-0.5 rounded-md bg-red-500 text-white">
+            <span className="absolute top-0.5 left-0.5 text-[7px] font-bold px-1 py-0.5 rounded-sm bg-red-500 text-white">
               -{discount}%
             </span>
           )}
         </div>
-        <div className="p-1.5 h-[70px] flex flex-col justify-between">
-          <p className="text-[10px] font-medium leading-tight line-clamp-1 text-[#1a1a1a]">
+        <div className="p-1.5 h-[90px] flex flex-col justify-between">
+          <p className="text-[9px] font-medium leading-tight line-clamp-2 text-[#1a1a1a]">
             {product.name}
           </p>
           <div>
-            <span className="text-[11px] font-bold text-[#1a1a1a]">
+            <span className="text-[10px] font-bold text-[#1a1a1a]">
               R$ {product.price.toFixed(2)}
             </span>
             {product.oldPrice && product.oldPrice > product.price && (
-              <span className="text-[8px] text-gray-400 line-through ml-1">
+              <span className="text-[7px] text-gray-400 line-through ml-0.5">
                 R$ {product.oldPrice.toFixed(2)}
               </span>
             )}
