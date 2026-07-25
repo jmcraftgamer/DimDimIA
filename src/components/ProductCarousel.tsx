@@ -44,19 +44,13 @@ export default function ProductCarousel({ title, products, loading }: ProductCar
         </button>
 
         {loading ? (
-          <div className="flex gap-2 overflow-hidden">
+          <div className="flex gap-1.5 overflow-hidden">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="min-w-[80px] sm:min-w-[95px] bg-[#f8f8f8] rounded-lg animate-pulse shrink-0">
-                <div className="aspect-square" />
-                <div className="p-1 space-y-0.5">
-                  <div className="h-2 bg-[#e5e5e5] rounded w-3/4" />
-                  <div className="h-2 bg-[#e5e5e5] rounded w-1/2" />
-                </div>
-              </div>
+              <div key={i} className="min-w-[80px] sm:min-w-[95px] h-[170px] bg-[#f8f8f8] rounded-lg animate-pulse shrink-0" />
             ))}
           </div>
         ) : (
-          <div ref={scrollRef} className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-0.5 items-stretch">
+          <div ref={scrollRef} className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-0.5">
             {products.map((product: any) => (
               <div key={product.id || product.name + product.store} className="min-w-[80px] sm:min-w-[95px] shrink-0">
                 <ProductCard product={product} variant="carousel" />
