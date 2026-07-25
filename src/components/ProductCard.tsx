@@ -45,7 +45,7 @@ export default function ProductCard({ product, variant = 'full' }: ProductCardPr
         href={product.productUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="block bg-white rounded-lg border border-[#e5e5e5] overflow-hidden no-underline text-inherit group w-[110px] sm:w-[125px] h-[250px]"
+        className="block bg-white rounded-lg border border-[#e5e5e5] overflow-hidden no-underline text-inherit group w-[160px] sm:w-[180px] h-[250px]"
       >
         <div className="relative h-[170px] bg-[#f8f8f8] overflow-hidden">
           {product.imageUrl && (
