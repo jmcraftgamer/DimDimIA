@@ -46,13 +46,13 @@ export default function ProductCarousel({ title, products, loading }: ProductCar
         {loading ? (
           <div className="flex gap-1.5 overflow-hidden">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="w-[80px] sm:w-[90px] h-[200px] bg-[#f8f8f8] rounded-lg animate-pulse shrink-0" />
+              <div key={i} className="w-[95px] sm:w-[105px] h-[220px] bg-[#f8f8f8] rounded-lg animate-pulse shrink-0" />
             ))}
           </div>
         ) : (
           <div ref={scrollRef} className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-0.5">
             {products.map((product: any) => (
-              <div key={product.id || product.name + product.store} className="w-[80px] sm:w-[90px] shrink-0">
+              <div key={product.id || product.name + product.store} className="w-[95px] sm:w-[105px] shrink-0">
                 <ProductCard product={product} variant="carousel" />
               </div>
             ))}

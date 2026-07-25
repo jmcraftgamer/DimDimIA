@@ -45,9 +45,9 @@ export default function ProductCard({ product, variant = 'full' }: ProductCardPr
         href={product.productUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="block bg-white rounded-lg border border-[#e5e5e5] overflow-hidden no-underline text-inherit group w-[80px] sm:w-[90px] h-[200px]"
+        className="block bg-white rounded-lg border border-[#e5e5e5] overflow-hidden no-underline text-inherit group w-[95px] sm:w-[105px] h-[220px]"
       >
-        <div className="relative h-[110px] bg-[#f8f8f8] overflow-hidden">
+        <div className="relative h-[120px] bg-[#f8f8f8] overflow-hidden">
           {product.imageUrl && (
             <Image
               src={product.imageUrl}
@@ -64,16 +64,16 @@ export default function ProductCard({ product, variant = 'full' }: ProductCardPr
             </span>
           )}
         </div>
-        <div className="p-1.5 h-[90px] flex flex-col justify-between">
-          <p className="text-[9px] font-medium leading-tight line-clamp-2 text-[#1a1a1a]">
+        <div className="p-1.5 h-[100px] flex flex-col justify-between">
+          <p className="text-[10px] font-medium leading-tight line-clamp-2 text-[#1a1a1a]">
             {product.name}
           </p>
           <div>
-            <span className="text-[10px] font-bold text-[#1a1a1a]">
+            <span className="text-[11px] font-bold text-[#1a1a1a]">
               R$ {product.price.toFixed(2)}
             </span>
             {product.oldPrice && product.oldPrice > product.price && (
-              <span className="text-[7px] text-gray-400 line-through ml-0.5">
+              <span className="text-[8px] text-gray-400 line-through ml-0.5">
                 R$ {product.oldPrice.toFixed(2)}
               </span>
             )}
