@@ -60,26 +60,28 @@ export default function ProductCard({ product, variant = 'full' }: ProductCardPr
           />
         )}
         {discount && (
-          <span className={`absolute top-1.5 left-1.5 ${isCarousel ? 'text-[10px] px-1' : 'text-xs px-2'} font-bold py-0.5 rounded-md bg-red-500 text-white`}>
+          <span className={`absolute top-1 left-1 ${isCarousel ? 'text-[8px] px-1 py-0.5' : 'text-xs px-2 py-0.5'} font-bold rounded-md bg-red-500 text-white`}>
             -{discount}%
           </span>
         )}
-        <span className={`absolute top-1.5 right-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${storeColors[product.store] || 'bg-gray-100 text-gray-800'}`}>
-          {product.store}
-        </span>
+        {!isCarousel && (
+          <span className={`absolute top-1 right-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${storeColors[product.store] || 'bg-gray-100 text-gray-800'}`}>
+            {product.store}
+          </span>
+        )}
       </div>
 
-      <div className={`${isCarousel ? 'p-2' : 'p-3'} space-y-1 flex flex-col flex-1`}>
-        <h3 className={`${isCarousel ? 'text-xs' : 'text-sm'} font-medium leading-tight line-clamp-2 group-hover:text-gray-600 transition-colors`}>
+      <div className={`${isCarousel ? 'p-1.5' : 'p-3'} space-y-1 flex flex-col flex-1`}>
+        <h3 className={`${isCarousel ? 'text-[10px]' : 'text-sm'} font-medium leading-tight line-clamp-1 group-hover:text-gray-600 transition-colors`}>
           {product.name}
         </h3>
 
-        <div className="flex items-baseline gap-1">
-          <span className={`${isCarousel ? 'text-sm' : 'text-lg'} font-bold text-[#1a1a1a]`}>
+        <div className="flex items-baseline gap-0.5">
+          <span className={`${isCarousel ? 'text-[11px]' : 'text-lg'} font-bold text-[#1a1a1a]`}>
             R$ {product.price.toFixed(2)}
           </span>
           {product.oldPrice && product.oldPrice > product.price && (
-            <span className="text-[10px] text-gray-400 line-through">
+            <span className="text-[8px] text-gray-400 line-through">
               R$ {product.oldPrice.toFixed(2)}
             </span>
           )}
@@ -114,8 +116,8 @@ export default function ProductCard({ product, variant = 'full' }: ProductCardPr
           </div>
         )}
 
-        <div className="mt-auto pt-1">
-          <span className={`block w-full text-center font-semibold bg-[#1a1a1a] text-white rounded-lg transition-colors ${isCarousel ? 'text-[10px] py-1.5' : 'text-xs py-2'} group-hover:bg-gray-800`}>
+        <div className="mt-auto pt-0.5">
+          <span className={`block w-full text-center font-semibold bg-[#1a1a1a] text-white rounded-md transition-colors ${isCarousel ? 'text-[8px] py-1' : 'text-xs py-2'} group-hover:bg-gray-800`}>
             {isCarousel ? 'Ver' : 'Comprar'}
           </span>
         </div>
