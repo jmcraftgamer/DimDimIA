@@ -2,6 +2,8 @@ import axios from 'axios'
 import * as cheerio from 'cheerio'
 import { ScrapedProduct } from '../../types'
 
+const MIN_STOCK = 50
+
 export interface MLBCategory {
   id: string
   name: string
@@ -274,6 +276,43 @@ function parsePolyCard($el: cheerio.Cheerio<any>): ScrapedProduct | null {
 
 const API_BASE = 'https://api.mercadolibre.com/sites/MLB/search'
 
+function apiProductToScraped(item: any, position: number): ScrapedProduct | null {
+  const originalPrice = item.original_price ?? item.sale_price?.regular_amount ?? null
+  if (!originalPrice || originalPrice <= item.price) return null
+
+  const discount = Math.round((1 - item.price / originalPrice) * 100)
+  if (discount < 5) return null
+
+  if (!item.available_quantity || item.available_quantity < MIN_STOCK) return null
+
+  return {
+    name: item.title,
+    description: item.title,
+    price: item.price,
+    oldPrice: originalPrice,
+    store: 'Mercado Livre',
+    imageUrl: item.thumbnail?.replace(/-I\.jpg/, '-O.jpg') ?? '',
+    productUrl: item.permalink ?? '',
+    freeShipping: item.shipping?.free_shipping ?? false,
+    sellerName: item.seller?.nickname ?? '',
+    inStock: true,
+    position,
+    availableQuantity: item.available_quantity,
+  }
+}
+
+const BATCH_PARALLEL = 10
+const DELAY_BETWEEN_BATCHES = 100
+
+async function fetchApiPage(params: any): Promise<any[]> {
+  try {
+    const { data } = await axios.get(API_BASE, { params, timeout: 15000 })
+    return data.results ?? []
+  } catch {
+    return []
+  }
+}
+
 export async function scrapeMLByCategory(slug: string, catId?: string): Promise<ScrapedProduct[]> {
   if (!catId) return []
 
@@ -292,8 +331,7 @@ export async function scrapeMLByCategory(slug: string, catId?: string): Promise<
     })
 
     return products
-  } catch (err: any) {
-    console.error(`[ML-Ofertas] ${catId} error: ${err.message}`)
+  } catch {
     return []
   }
 }
@@ -302,28 +340,38 @@ export async function scrapeMLCategoryListings(catSlug: string, catName: string,
   const allProducts: ScrapedProduct[] = []
   const seen = new Set<string>()
 
-  for (let page = 1; page <= maxPages; page++) {
-    try {
-      const url = `https://www.mercadolivre.com.br/c/${catSlug}?page=${page}`
-      const { data } = await axios.get(url, { headers: HEADERS, timeout: 20000 })
-      const $ = cheerio.load(data)
-      let found = 0
+  for (let batchStart = 1; batchStart <= maxPages; batchStart += BATCH_PARALLEL) {
+    const batchEnd = Math.min(batchStart + BATCH_PARALLEL - 1, maxPages)
+    const pages = Array.from({ length: batchEnd - batchStart + 1 }, (_, i) => batchStart + i)
 
+    const results = await Promise.allSettled(
+      pages.map(page =>
+        axios.get(`https://www.mercadolivre.com.br/c/${catSlug}?page=${page}`, {
+          headers: HEADERS, timeout: 20000,
+        }).then(r => r.data)
+      )
+    )
+
+    let foundAny = false
+    for (const result of results) {
+      if (result.status !== 'fulfilled') continue
+      const $ = cheerio.load(result.value)
+      let count = 0
       $('.poly-card').each((_, el) => {
         const p = parsePolyCard($(el))
         if (p && !seen.has(p.productUrl)) {
           seen.add(p.productUrl)
           allProducts.push(p)
-          found++
+          count++
         }
       })
+      if (count > 0) foundAny = true
+    }
 
-      if (found === 0) break
+    if (!foundAny && batchStart > 1) break
 
-      await new Promise(r => setTimeout(r, 500))
-    } catch (err: any) {
-      console.error(`[ML-Listings] ${catSlug} page ${page}: ${err.message}`)
-      break
+    if (batchEnd < maxPages) {
+      await new Promise(r => setTimeout(r, DELAY_BETWEEN_BATCHES))
     }
   }
 
@@ -333,46 +381,31 @@ export async function scrapeMLCategoryListings(catSlug: string, catName: string,
 export async function scrapeMLApiSearch(catId: string): Promise<ScrapedProduct[]> {
   const products: ScrapedProduct[] = []
   const seen = new Set<string>()
+  const offsets = Array.from({ length: 20 }, (_, i) => i * 50)
 
-  for (let offset = 0; offset < 1000; offset += 50) {
-    try {
-      const { data } = await axios.get(API_BASE, {
-        params: { category: catId, offset, limit: 50 },
-        timeout: 15000,
-      })
+  for (let batchStart = 0; batchStart < offsets.length; batchStart += BATCH_PARALLEL) {
+    const batchOffsets = offsets.slice(batchStart, batchStart + BATCH_PARALLEL)
 
-      if (!data.results?.length) break
+    const results = await Promise.allSettled(
+      batchOffsets.map(offset =>
+        fetchApiPage({ category: catId, offset, limit: 50 })
+      )
+    )
 
-      for (let i = 0; i < data.results.length; i++) {
-        const item = data.results[i]
+    for (const result of results) {
+      if (result.status !== 'fulfilled') continue
+      const items = result.value
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i]
         if (seen.has(item.id)) continue
         seen.add(item.id)
-
-        const originalPrice = item.original_price ?? item.sale_price?.regular_amount ?? null
-        if (!originalPrice || originalPrice <= item.price) continue
-
-        const discount = Math.round((1 - item.price / originalPrice) * 100)
-        if (discount < 5) continue
-
-        products.push({
-          name: item.title,
-          description: item.title,
-          price: item.price,
-          oldPrice: originalPrice,
-          store: 'Mercado Livre',
-          imageUrl: item.thumbnail?.replace(/-I\.jpg/, '-O.jpg') ?? '',
-          productUrl: item.permalink ?? '',
-          freeShipping: item.shipping?.free_shipping ?? false,
-          sellerName: item.seller?.nickname ?? '',
-          inStock: item.available_quantity > 0,
-          position: offset + i,
-        })
+        const p = apiProductToScraped(item, batchOffsets[results.indexOf(result as any)] + i)
+        if (p) products.push(p)
       }
+    }
 
-      await new Promise(r => setTimeout(r, 300))
-    } catch (err: any) {
-      console.error(`[ML-API] ${catId} offset ${offset}: ${err.message}`)
-      break
+    if (batchStart + BATCH_PARALLEL < offsets.length) {
+      await new Promise(r => setTimeout(r, DELAY_BETWEEN_BATCHES))
     }
   }
 
@@ -382,67 +415,97 @@ export async function scrapeMLApiSearch(catId: string): Promise<ScrapedProduct[]
 const SORT_ORDERS = ['relevance', 'price_desc', 'price_asc'] as const
 
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  'celulares': ['smartphone', 'iphone', 'samsung', 'xiaomi', 'motorola'],
-  'tv': ['smart tv', 'oled', '4k', 'led tv', 'samsung tv'],
-  'notebooks': ['notebook', 'ultrabook', 'gamer notebook', 'dell', 'lenovo'],
-  'fones-de-ouvido': ['fone bluetooth', 'headset', 'fone sem fio', 'airpods'],
-  'processadores': ['intel core', 'amd ryzen', 'i5', 'i7', 'ryzen 7'],
-  'geladeiras': ['geladeira frost free', 'refrigerador', 'consul', 'brastemp'],
-  'fogoes': ['fogão 4 bocas', 'fogão cooktop', 'fogão de piso'],
-  'air-fryer': ['air fryer digital', 'fritadeira', 'air fryer philips'],
-  'monitores': ['monitor gamer', 'monitor 4k', 'monitor ultrawide'],
-  'teclados': ['teclado gamer', 'teclado mecanico', 'teclado sem fio'],
-  'mouses': ['mouse gamer', 'mouse sem fio', 'mouse logitech'],
-  'ssd': ['ssd 480gb', 'ssd 1tb', 'ssd nvme', 'ssd kingston'],
+  celulares: ['smartphone', 'iphone', 'samsung galaxy', 'xiaomi', 'motorola', 'celular 5g', 'celular promoção', 'smartphone barato'],
+  informatica: ['notebook', 'ultrabook', 'pc gamer', 'monitor', 'teclado', 'mouse', 'ssd', 'placa de video', 'processador', 'memoria ram'],
+  tv: ['smart tv', 'tv 4k', 'tv oled', 'tv led', 'samsung tv', 'lg tv', 'tv promoção'],
+  notebooks: ['notebook', 'notebook gamer', 'ultrabook', 'dell', 'lenovo', 'acer', 'samsung notebook', 'notebook promoção'],
+  eletrodomesticos: ['geladeira', 'fogao', 'micro-ondas', 'air fryer', 'lavadora', 'freezer', 'cafeteira', 'liquidificador', 'batedeira', 'purificador'],
+  fones: ['fone bluetooth', 'headset', 'fone sem fio', 'airpods', 'fone ouvido', 'fone com fio', 'headset gamer'],
+  "fones-de-ouvido": ['fone bluetooth', 'headset', 'fone sem fio', 'airpods', 'fone ouvido', 'fone cancelamento'],
+  games: ['playstation 5', 'xbox series', 'nintendo switch', 'jogos ps5', 'jogos xbox', 'cadeira gamer', 'headset gamer'],
+  processadores: ['intel core', 'amd ryzen', 'i5', 'i7', 'ryzen 5', 'ryzen 7', 'i9', 'processador'],
+  "placas-de-video": ['placa de video', 'rtx', 'gtx', 'rx', 'nvidia', 'amd placa'],
+  monitores: ['monitor', 'monitor gamer', 'monitor 4k', 'monitor ultrawide', 'monitor curvo', 'monitor 144hz'],
+  teclados: ['teclado mecanico', 'teclado gamer', 'teclado sem fio', 'teclado logitech', 'teclado redragon'],
+  mouses: ['mouse gamer', 'mouse sem fio', 'mouse logitech', 'mouse razer', 'mousepad'],
+  ssd: ['ssd 240gb', 'ssd 480gb', 'ssd 1tb', 'ssd nvme', 'ssd kingston', 'ssd crucial'],
+  "memoria-ram": ['memoria ram', 'ddr4', 'ddr5', 'kingston', 'corsair', 'memoria 8gb', 'memoria 16gb'],
+  geladeiras: ['geladeira frost free', 'geladeira inverse', 'geladeira consul', 'geladeira brastemp', 'refrigerador'],
+  fogoes: ['fogao 4 bocas', 'fogao 5 bocas', 'fogao cooktop', 'fogao de piso', 'fogao consul'],
+  "air-fryer": ['air fryer digital', 'air fryer 4l', 'air fryer 8l', 'air fryer philips', 'air fryer mondial', 'fritadeira'],
+  "micro-ondas": ['micro-ondas', 'micro-ondas 30l', 'micro-ondas consul', 'micro-ondas brastemp', 'micro-ondas philco'],
+  roteadores: ['roteador wifi', 'roteador mesh', 'roteador tp-link', 'roteador intelbras', 'roteador 5ghz'],
+  "caixas-de-som": ['caixa de som', 'caixa de som bluetooth', 'caixa de som portatil', 'jbl', 'caixa de som potente'],
+  tablets: ['tablet', 'samsung tablet', 'ipad', 'tablet android', 'tablet promoção'],
+  smartwatches: ['smartwatch', 'relogio inteligente', 'apple watch', 'samsung watch', 'xiaomi watch'],
+  cameras: ['camera digital', 'camera profissional', 'camera canon', 'camera nikon', 'camera sony'],
+  bicicletas: ['bicicleta', 'bicicleta aro 29', 'bicicleta eletrica', 'bike', 'bicicleta infantil'],
+  suplementos: ['whey protein', 'creatina', 'pré treino', 'vitamina', 'suplemento'],
+  perfumes: ['perfume', 'perfume masculino', 'perfume feminino', 'colonia', 'natura', 'boticário'],
+  mochilas: ['mochila', 'mochila notebook', 'mochila escolar', 'mochila viagem', 'mochila feminina'],
+  pet: ['ração', 'racao cachorro', 'racao gato', 'pet', 'brinquedo pet', 'cama pet'],
+  livros: ['livro', 'livro promoção', 'best seller', 'kindle', 'ebook', 'livro fisico'],
+  relogios: ['relogio masculino', 'relogio feminino', 'relogio digital', 'relogio automatico', 'smartwatch'],
+  sofa: ['sofa', 'sofa 3 lugares', 'sofa cama', 'sofa retratil', 'sofa sala'],
+  colchoes: ['colchao', 'colchao casal', 'colchao solteiro', 'colchao queen', 'colchao ortopedico'],
+  brinquedos: ['brinquedo', 'lego', 'boneca', 'carrinho', 'jogo tabuleiro', 'pelucia'],
+  ferramentas: ['furadeira', 'parafusadeira', 'kit ferramentas', 'serra', 'ferramenta', 'jardim'],
+  pneus: ['pneu', 'pneu aro 15', 'pneu aro 16', 'pneu 14', 'pneu 17'],
+  automotivo: ['bateria automotiva', 'oleo motor', 'som automotivo', 'farol', 'acessorio carro'],
+  fitness: ['esteira', 'bicicleta ergometrica', 'halter', 'yoga', 'musculacao', 'corrida'],
+  audio: ['caixa de som', 'soundbar', 'home theater', 'microfone', 'violao', 'guitarra'],
+  bebe: ['fralda', 'carrinho bebe', 'berco', 'cadeirinha', 'bebe'],
+  casa: ['sofa', 'mesa', 'cadeira', 'estante', 'rack', 'decoracao', 'cortina', 'tapete'],
+  moda: ['tenis', 'camiseta', 'jaqueta', 'calça', 'vestido', 'oculos', 'bolsa'],
+  beleza: ['perfume', 'maquiagem', 'skincare', 'cabelo', 'barbeador', 'secador'],
+}
+
+function getKeywords(slug: string): string[] {
+  const base = CATEGORY_KEYWORDS[slug]
+  if (!base || base.length === 0) return ['']
+  return base
 }
 
 export async function scrapeMLApiSearchMulti(catId: string, catSlug: string): Promise<ScrapedProduct[]> {
   const products: ScrapedProduct[] = []
   const seen = new Set<string>()
+  const queries = getKeywords(catSlug)
 
-  const queries = CATEGORY_KEYWORDS[catSlug] ?? ['']
-
+  const combos: { sort: string; q: string; offset: number }[] = []
   for (const sort of SORT_ORDERS) {
     for (const q of queries) {
       for (let offset = 0; offset < 1000; offset += 50) {
-        try {
-          const params: any = { category: catId, offset, limit: 50, sort }
-          if (q) params.q = q
-
-          const { data } = await axios.get(API_BASE, { params, timeout: 15000 })
-          if (!data.results?.length) break
-
-          for (let i = 0; i < data.results.length; i++) {
-            const item = data.results[i]
-            if (seen.has(item.id)) continue
-            seen.add(item.id)
-
-            const originalPrice = item.original_price ?? item.sale_price?.regular_amount ?? null
-            if (!originalPrice || originalPrice <= item.price) continue
-
-            const discount = Math.round((1 - item.price / originalPrice) * 100)
-            if (discount < 5) continue
-
-            products.push({
-              name: item.title,
-              description: item.title,
-              price: item.price,
-              oldPrice: originalPrice,
-              store: 'Mercado Livre',
-              imageUrl: item.thumbnail?.replace(/-I\.jpg/, '-O.jpg') ?? '',
-              productUrl: item.permalink ?? '',
-              freeShipping: item.shipping?.free_shipping ?? false,
-              sellerName: item.seller?.nickname ?? '',
-              inStock: item.available_quantity > 0,
-              position: offset + i,
-            })
-          }
-
-          await new Promise(r => setTimeout(r, 300))
-        } catch {
-          break
-        }
+        combos.push({ sort, q, offset })
       }
+    }
+  }
+
+  for (let batchStart = 0; batchStart < combos.length; batchStart += BATCH_PARALLEL) {
+    const batch = combos.slice(batchStart, batchStart + BATCH_PARALLEL)
+
+    const results = await Promise.allSettled(
+      batch.map(({ sort, q, offset }) => {
+        const params: any = { category: catId, offset, limit: 50, sort }
+        if (q) params.q = q
+        return fetchApiPage(params)
+      })
+    )
+
+    for (let b = 0; b < results.length; b++) {
+      const result = results[b]
+      if (result.status !== 'fulfilled') continue
+      const items = result.value
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i]
+        if (seen.has(item.id)) continue
+        seen.add(item.id)
+        const p = apiProductToScraped(item, batch[b].offset + i)
+        if (p) products.push(p)
+      }
+    }
+
+    if (batchStart + BATCH_PARALLEL < combos.length) {
+      await new Promise(r => setTimeout(r, DELAY_BETWEEN_BATCHES))
     }
   }
 

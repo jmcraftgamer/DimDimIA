@@ -5,6 +5,7 @@ import {
   MLB_CATEGORIES,
   scrapeMLCategoryListings,
   scrapeMLApiSearchMulti,
+  scrapeMLApiSearch,
 } from '../../../lib/scrapers/mercadolivre-api'
 import { checkSeller } from '../../../lib/whitelist'
 
@@ -43,6 +44,7 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
     if (!p.oldPrice || p.oldPrice <= p.price) continue
     const discount = Math.round((1 - p.price / p.oldPrice) * 100)
     if (discount < 5) continue
+    if ((p.availableQuantity ?? 0) < 50) continue
     const desirability = calcDesirability(discount, p.position)
 
     try {
@@ -63,6 +65,7 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
             sellerId: sellerId ?? existing.sellerId, lastVerified: new Date(),
             score: desirability, position: p.position ?? existing.position,
             reason: `${discount}% OFF`,
+            inStock: true,
           },
         })
       } else {
@@ -77,7 +80,7 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
             freeShipping: p.freeShipping ?? null, coupon: p.coupon ?? null,
             couponCode: p.couponCode ?? null, tax: p.tax ?? null,
             isActive: true, isPromoted: true,
-            inStock: p.inStock !== false, sellerId: sellerId ?? null, lastVerified: new Date(),
+            inStock: true, sellerId: sellerId ?? null, lastVerified: new Date(),
             score: desirability, position: p.position ?? null,
             reason: `${discount}% OFF`,
           },
@@ -96,30 +99,39 @@ export async function GET() {
 
   try {
     const t = Math.floor(Date.now() / 60000)
+    const totalCats = MLB_CATEGORIES.length
 
-    const listingIdx1 = t % MLB_CATEGORIES.length
-    const listingIdx2 = (t + 1) % MLB_CATEGORIES.length
+    const catsPerCycle = 6
+    const seen = new Set<string>()
 
-    for (const idx of [listingIdx1, listingIdx2]) {
+    for (let i = 0; i < catsPerCycle; i++) {
+      const idx = (t + i) % totalCats
       const cat = MLB_CATEGORIES[idx]
-      if (!cat) continue
-      try {
-        const products = await scrapeMLCategoryListings(cat.slug, cat.name, 25)
-        processed.push(`Listings ${cat.name}: ${products.length} promos`)
-        if (products.length > 0) totalSaved += await saveProducts(products, cat.slug, cat.name)
-      } catch (err: any) {
-        processed.push(`Listings ${cat.name}: ERRO ${err.message}`)
-      }
-    }
+      if (!cat || seen.has(cat.id)) continue
+      seen.add(cat.id)
 
-    const apiCat = MLB_CATEGORIES[(t + 2) % MLB_CATEGORIES.length]
-    if (apiCat) {
-      try {
-        const products = await scrapeMLApiSearchMulti(apiCat.id, apiCat.slug)
-        processed.push(`API-Multi ${apiCat.name}: ${products.length} promos`)
-        if (products.length > 0) totalSaved += await saveProducts(products, apiCat.slug, apiCat.name)
-      } catch (err: any) {
-        processed.push(`API-Multi ${apiCat.name}: ERRO ${err.message}`)
+      if (i % 2 === 0) {
+        try {
+          const products = await scrapeMLCategoryListings(cat.slug, cat.name, 25)
+          processed.push(`Listings ${cat.name}: ${products.length} promos`)
+          if (products.length > 0) totalSaved += await saveProducts(products, cat.slug, cat.name)
+        } catch (err: any) {
+          processed.push(`Listings ${cat.name}: ERRO ${err.message}`)
+        }
+      } else {
+        try {
+          const products = await scrapeMLApiSearchMulti(cat.id, cat.slug)
+          processed.push(`API ${cat.name}: ${products.length} promos`)
+          if (products.length > 0) totalSaved += await saveProducts(products, cat.slug, cat.name)
+        } catch (err: any) {
+          processed.push(`API ${cat.name}: ERRO ${err.message}`)
+        }
+      }
+
+      const elapsed = Date.now() - startTime
+      if (elapsed > 45000) {
+        processed.push(`⚠️ Tempo limite próximo (${Math.round(elapsed / 1000)}s)`)
+        break
       }
     }
 

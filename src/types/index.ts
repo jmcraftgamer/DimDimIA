@@ -38,6 +38,7 @@ export interface ScrapedProduct {
   sellerName?: string
   inStock?: boolean
   position?: number
+  availableQuantity?: number
 }
 
 export interface ChatMessage {
