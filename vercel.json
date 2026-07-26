@@ -3,6 +3,10 @@
     {
       "path": "/api/cron",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/ai-scrape",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

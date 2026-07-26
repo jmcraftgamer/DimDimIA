@@ -511,3 +511,40 @@ export async function scrapeMLApiSearchMulti(catId: string, catSlug: string): Pr
 
   return products
 }
+
+export async function scrapeMLApiByQueries(catId: string, queries: string[], maxResults = 200): Promise<ScrapedProduct[]> {
+  const products: ScrapedProduct[] = []
+  const seen = new Set<string>()
+
+  for (let b = 0; b < queries.length; b += BATCH_PARALLEL) {
+    const batch = queries.slice(b, b + BATCH_PARALLEL)
+
+    const results = await Promise.allSettled(
+      batch.map(q => {
+        const params: any = { category: catId, q, offset: 0, limit: 50 }
+        return fetchApiPage(params)
+      })
+    )
+
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i]
+      if (result.status !== 'fulfilled') continue
+      const items = result.value
+      for (let j = 0; j < items.length; j++) {
+        const item = items[j]
+        if (seen.has(item.id)) continue
+        seen.add(item.id)
+        const p = apiProductToScraped(item, j)
+        if (p) products.push(p)
+      }
+    }
+
+    if (b + BATCH_PARALLEL < queries.length) {
+      await new Promise(r => setTimeout(r, DELAY_BETWEEN_BATCHES))
+    }
+
+    if (products.length >= maxResults) break
+  }
+
+  return products.slice(0, maxResults)
+}
