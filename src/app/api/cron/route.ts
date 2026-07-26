@@ -157,27 +157,18 @@ async function runAiScrape(startTime: number): Promise<{ saved: number; logs: an
 
 export async function GET() {
   const startTime = Date.now()
-  const minute = new Date().getMinutes()
-  const isAiCycle = minute % 5 === 0
-
   try {
     const regular = await runRegularScrape(startTime)
 
-    let aiLogs = null
-    if (isAiCycle) {
-      const ai = await runAiScrape(startTime)
-      aiLogs = ai.logs
-      regular.saved += ai.saved
-    }
+    const ai = await runAiScrape(startTime)
+    regular.saved += ai.saved
 
     const activeProducts = await prisma.product.count({ where: { isActive: true } })
 
     return NextResponse.json({
       success: true,
-      minute,
-      aiCycle: isAiCycle,
       regular: regular.logs,
-      ai: aiLogs,
+      ai: ai.logs,
       totalSaved: regular.saved,
       activeProducts,
       elapsedMs: Date.now() - startTime,
