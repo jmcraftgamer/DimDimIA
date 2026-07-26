@@ -46,7 +46,7 @@ export default function ProductCarousel({ title, products, loading }: ProductCar
         {loading ? (
           <div className="flex gap-1.5 overflow-hidden">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="w-[160px] sm:w-[180px] h-[250px] bg-[#f8f8f8] rounded-lg animate-pulse shrink-0" />
+              <div key={i} className="w-[160px] sm:w-[180px] h-[270px] bg-[#f8f8f8] rounded-lg animate-pulse shrink-0" />
             ))}
           </div>
         ) : (

@@ -45,7 +45,7 @@ export default function ProductCard({ product, variant = 'full' }: ProductCardPr
         href={product.productUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="block bg-white rounded-lg border border-[#e5e5e5] overflow-hidden no-underline text-inherit group w-[160px] sm:w-[180px] h-[250px]"
+        className="block bg-white rounded-lg border border-[#e5e5e5] overflow-hidden no-underline text-inherit group w-[160px] sm:w-[180px] h-[270px]"
       >
         <div className="relative h-[170px] bg-[#f8f8f8] overflow-hidden">
           {product.imageUrl && (
@@ -64,7 +64,7 @@ export default function ProductCard({ product, variant = 'full' }: ProductCardPr
             </span>
           )}
         </div>
-        <div className="px-1.5 pb-1.5 h-[80px] flex flex-col justify-center gap-0.5">
+        <div className="px-1.5 pb-1.5 h-[100px] flex flex-col justify-center gap-0.5">
           <p className="text-[10px] font-medium leading-tight line-clamp-2 text-[#1a1a1a]">
             {product.name}
           </p>
@@ -78,6 +78,9 @@ export default function ProductCard({ product, variant = 'full' }: ProductCardPr
               </span>
             )}
           </div>
+          <span className="block text-[10px] font-semibold text-center bg-[#1a1a1a] text-white rounded-md py-1.5 mt-auto">
+            Comprar
+          </span>
         </div>
       </a>
     )
