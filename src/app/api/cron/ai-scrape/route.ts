@@ -42,10 +42,10 @@ function getFallbackQueries(slug: string): string[] {
   const exact = FALLBACK_QUERIES[slug]
   if (exact) return exact
 
-  const words = slug.replace(/-/g, ' ').split(' ')
-  const mainWord = words[words.length - 1]
-  if (mainWord && mainWord.length > 2) {
-    return [`${mainWord} promoção`, `${mainWord} oferta`, mainWord, `${mainWord} barato`]
+  const readable = slug.replace(/-/g, ' ')
+  const first = readable.split(' ')[0]
+  if (first && first.length > 2) {
+    return [readable, `${readable} promoção`, first, `${first} promoção`]
   }
   return ['promocao', 'oferta', 'desconto']
 }
@@ -82,7 +82,10 @@ async function runAgent(agentId: number, categories: MLBCategory[], deadline: nu
     }
 
     if (Date.now() > deadline) break
-    const products = await scrapeMLApiByQueries(cat.id, queries, 30)
+    let products = await scrapeMLApiByQueries(cat.id, queries, 30)
+    if (products.length === 0) {
+      products = await scrapeMLApiByQueries(cat.id, ['promocao', 'oferta', 'desconto'], 20)
+    }
     total += products.length
   }
 
