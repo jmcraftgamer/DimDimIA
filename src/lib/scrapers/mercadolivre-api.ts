@@ -306,7 +306,7 @@ const DELAY_BETWEEN_BATCHES = 100
 
 async function fetchApiPage(params: any): Promise<any[]> {
   try {
-    const { data } = await axios.get(API_BASE, { params, timeout: 15000 })
+    const { data } = await axios.get(API_BASE, { params, headers: HEADERS, timeout: 15000 })
     return data.results ?? []
   } catch {
     return []
