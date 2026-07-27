@@ -23,9 +23,31 @@ const FALLBACK_QUERIES: Record<string, string[]> = {
   casa: ['sofa', 'cadeira', 'colchao', 'mesa'],
   pet: ['racao', 'brinquedo pet', 'cama pet', 'coleira'],
   audio: ['caixa de som', 'soundbar', 'home theater', 'microfone'],
-  bebe: ['fralda', 'carrinho bebe', 'berco', 'cadeirinha'],
   ferramentas: ['furadeira', 'parafusadeira', 'kit ferramentas', 'serra'],
   automotivo: ['bateria automotiva', 'oleo motor', 'som automotivo', 'pneu'],
+  livros: ['livro', 'best seller', 'romance', 'quadrinhos'],
+  esportes: ['bicicleta', 'esteira', 'suplemento', 'skate'],
+  instrumentos: ['violao', 'guitarra', 'teclado', 'bateria'],
+  saude: ['vitamina', 'whey', 'creatina', 'termogenico'],
+  cozinha: ['panela', 'jogo panelas', 'talheres', 'copo'],
+  decoracao: ['quadro', 'vaso', 'luminaria', 'tapete'],
+  moveis: ['sofa', 'mesa', 'estante', 'rack'],
+  brinquedos: ['lego', 'boneca', 'carrinho', 'jogo tabuleiro'],
+  relogios: ['relogio masculino', 'relogio feminino', 'smartwatch', 'apple watch'],
+  cameras: ['camera digital', 'canon', 'nikon', 'camera seguranca'],
+  pneus: ['pneu aro 15', 'pneu aro 16', 'pneu aro 17', 'pneu 14'],
+}
+
+function getFallbackQueries(slug: string): string[] {
+  const exact = FALLBACK_QUERIES[slug]
+  if (exact) return exact
+
+  const words = slug.replace(/-/g, ' ').split(' ')
+  const mainWord = words[words.length - 1]
+  if (mainWord && mainWord.length > 2) {
+    return [`${mainWord} promoção`, `${mainWord} oferta`, mainWord, `${mainWord} barato`]
+  }
+  return ['promocao', 'oferta', 'desconto']
 }
 
 const AI_PROMPT = `Você é um especialista em promoções do Mercado Livre Brasil.
@@ -56,7 +78,7 @@ async function runAgent(agentId: number, categories: MLBCategory[], deadline: nu
       queries = aiRes.split('\n').map(l => l.replace(/^\d+[\.\)]\s*/, '').trim()).filter(l => l.length > 3).slice(0, QUERIES_PER)
     }
     if (queries.length === 0) {
-      queries = FALLBACK_QUERIES[cat.slug]?.slice(0, QUERIES_PER) || ['promocao']
+      queries = getFallbackQueries(cat.slug).slice(0, QUERIES_PER)
     }
 
     if (Date.now() > deadline) break
