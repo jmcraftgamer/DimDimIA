@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { chatWithModel } from '../../../lib/openhauter'
+import { chatWithModel, MODELS } from '../../../lib/openhauter'
 import { searchProducts } from '../../../lib/scrapers'
 import prisma from '../../../lib/prisma'
 
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
       if (scrapedProducts.length === 0) {
         const messages = history || []
         messages.push({ role: 'user', content: message })
-        const response = await chatWithModel('google/gemini-2.0-flash-001', messages, SYSTEM_PROMPT)
+        const response = await chatWithModel(MODELS.CHAT_ASSISTANT, messages, SYSTEM_PROMPT)
 
         if (session?.user?.email) {
           const user = await prisma.user.findUnique({ where: { email: session.user.email } })

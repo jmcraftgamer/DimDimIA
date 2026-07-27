@@ -87,7 +87,7 @@ export async function chatWithJSON<T>(
 export const MODELS = {
   PRODUCT_SEARCH: process.env.MODEL_PRODUCT_SEARCH || 'google/gemini-2.0-flash-001',
   PRODUCT_MONITOR: process.env.MODEL_PRODUCT_MONITOR || 'google/gemini-2.0-flash-001',
-  CHAT_ASSISTANT: process.env.MODEL_CHAT_ASSISTANT || 'google/gemini-2.0-flash-001',
+  CHAT_ASSISTANT: process.env.MODEL_CHAT_ASSISTANT || 'openrouter/free',
 } as const
 
 export const SYSTEM_PROMPTS = {
