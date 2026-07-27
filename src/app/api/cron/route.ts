@@ -3,13 +3,11 @@ import prisma from '../../../lib/prisma'
 import { ScrapedProduct } from '../../../types'
 import {
   MLB_CATEGORIES,
-  scrapeMLCategoryListings,
-  scrapeMLApiSearchMulti,
+  scrapeMLApiSearch,
 } from '../../../lib/scrapers/mercadolivre-api'
 import { checkSeller } from '../../../lib/whitelist'
-import { divideCategoriesIntoGroups, runAgent, AGENTS_COUNT } from '../../../lib/ai-agent'
 
-export const maxDuration = 60
+export const maxDuration = 10
 export const dynamic = 'force-dynamic'
 
 function buildProductId(store: string, productUrl: string, name: string): string {
@@ -92,84 +90,34 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
   return saved
 }
 
-async function runRegularScrape(startTime: number): Promise<{ saved: number; logs: string[] }> {
-  let totalSaved = 0
-  const processed: string[] = []
-  const t = Math.floor(Date.now() / 60000)
-  const totalCats = MLB_CATEGORIES.length
-  const catsPerCycle = 6
-  const seen = new Set<string>()
-
-  for (let i = 0; i < catsPerCycle; i++) {
-    const idx = (t + i) % totalCats
-    const cat = MLB_CATEGORIES[idx]
-    if (!cat || seen.has(cat.id)) continue
-    seen.add(cat.id)
-
-    if (i % 2 === 0) {
-      try {
-        const products = await scrapeMLCategoryListings(cat.slug, cat.name, 25)
-        processed.push(`📋 ${cat.name}: ${products.length}`)
-        if (products.length > 0) totalSaved += await saveProducts(products, cat.slug, cat.name)
-      } catch (err: any) {
-        processed.push(`📋 ${cat.name}: ERRO`)
-      }
-    } else {
-      try {
-        const products = await scrapeMLApiSearchMulti(cat.id, cat.slug)
-        processed.push(`🔍 ${cat.name}: ${products.length}`)
-        if (products.length > 0) totalSaved += await saveProducts(products, cat.slug, cat.name)
-      } catch (err: any) {
-        processed.push(`🔍 ${cat.name}: ERRO`)
-      }
-    }
-
-    if (Date.now() - startTime > 30000) break
-  }
-
-  return { saved: totalSaved, logs: processed }
-}
-
-async function runAiScrape(startTime: number): Promise<{ saved: number; logs: any[] }> {
-  const groups = divideCategoriesIntoGroups(AGENTS_COUNT)
-
-  const agentPromises = groups.map((group, i) => {
-    const delay = i * 500
-    return new Promise<any>(resolve =>
-      setTimeout(() => resolve(runAgent(i, group.groupName, group.categories)), delay)
-    )
-  })
-
-  const agentResults = await Promise.all(agentPromises)
-  const totalSaved = agentResults.reduce((s: number, r: any) => s + r.productsFound, 0)
-
-  return {
-    saved: totalSaved,
-    logs: agentResults.map((r: any) => ({
-      id: r.agentId,
-      group: r.groupName,
-      queries: r.queriesGenerated,
-      saved: r.productsFound,
-      error: r.error || null,
-    })),
-  }
-}
-
 export async function GET() {
   const startTime = Date.now()
-  try {
-    const regular = await runRegularScrape(startTime)
 
-    const ai = await runAiScrape(startTime)
-    regular.saved += ai.saved
+  try {
+    const t = Math.floor(Date.now() / 60000)
+    const totalCats = MLB_CATEGORIES.length
+    let totalSaved = 0
+    const logs: string[] = []
+
+    for (let i = 0; i < 2; i++) {
+      const idx = (t + i) % totalCats
+      const cat = MLB_CATEGORIES[idx]
+      if (!cat) continue
+
+      const products = await scrapeMLApiSearch(cat.id)
+      logs.push(`${cat.name}: ${products.length}`)
+      if (products.length > 0) totalSaved += await saveProducts(products, cat.slug, cat.name)
+
+      if (Date.now() - startTime > 7000) break
+    }
 
     const activeProducts = await prisma.product.count({ where: { isActive: true } })
 
     return NextResponse.json({
       success: true,
-      regular: regular.logs,
-      ai: ai.logs,
-      totalSaved: regular.saved,
+      type: 'scrape',
+      logs,
+      totalSaved,
       activeProducts,
       elapsedMs: Date.now() - startTime,
     })

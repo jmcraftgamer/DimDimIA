@@ -9,6 +9,7 @@ const OPENROUTER_API_KEY = process.env.OPENHAUTER_API_KEY || ''
 const OPENROUTER_URL = process.env.OPENHAUTER_API_URL || 'https://openrouter.ai/api/v1/chat/completions'
 
 export const AGENTS_COUNT = 10
+const CATS_PER_AGENT = 3
 
 function shuffleArray<T>(arr: T[]): T[] {
   const a = [...arr]
@@ -22,12 +23,14 @@ function shuffleArray<T>(arr: T[]): T[] {
 export function divideCategoriesIntoGroups(count: number): { groupName: string; categories: MLBCategory[] }[] {
   const shuffled = shuffleArray(MLB_CATEGORIES)
   const groups: { groupName: string; categories: MLBCategory[] }[] = []
-  const perGroup = Math.ceil(shuffled.length / count)
 
   for (let i = 0; i < count; i++) {
-    const cats = shuffled.slice(i * perGroup, (i + 1) * perGroup)
-    if (cats.length === 0) continue
-    const groupName = cats.map(c => c.name).slice(0, 3).join(', ') + (cats.length > 3 ? ` +${cats.length - 3}` : '')
+    const start = (i * CATS_PER_AGENT) % shuffled.length
+    const cats = []
+    for (let j = 0; j < CATS_PER_AGENT; j++) {
+      cats.push(shuffled[(start + j) % shuffled.length])
+    }
+    const groupName = cats.map(c => c.name).slice(0, 3).join(', ')
     groups.push({ groupName, categories: cats })
   }
 
@@ -175,7 +178,7 @@ export async function runAgent(
   categories: MLBCategory[]
 ): Promise<AgentResult> {
   const catNames = categories.map(c => `${c.name} (${c.slug})`).join(', ')
-  const userPrompt = `Categoria(s): ${catNames}\n\nGere 10 queries de busca específicas para essas categorias.`
+  const userPrompt = `Categoria(s): ${catNames}\n\nGere 6 queries de busca específicas para essas categorias.`
 
   const response = await callOpenRouter(SYSTEM_PROMPT_GENERATE_QUERIES, userPrompt)
   if (!response) {
@@ -186,6 +189,7 @@ export async function runAgent(
     .split('\n')
     .map(l => l.replace(/^\d+[\.\)]\s*/, '').trim())
     .filter(l => l.length > 5)
+    .slice(0, 6)
 
   if (queries.length === 0) {
     return { agentId, groupName, queriesGenerated: 0, productsFound: 0, error: 'Nenhuma query válida' }
@@ -193,7 +197,7 @@ export async function runAgent(
 
   let totalSaved = 0
   for (const cat of categories) {
-    const products = await scrapeMLApiByQueries(cat.id, queries, 50)
+    const products = await scrapeMLApiByQueries(cat.id, queries, 30)
     for (const p of products) {
       const saved = await saveProduct(p, cat.slug, cat.name)
       if (saved) totalSaved++

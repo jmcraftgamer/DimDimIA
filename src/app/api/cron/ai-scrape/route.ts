@@ -1,22 +1,21 @@
 import { NextResponse } from 'next/server'
 import prisma from '../../../../lib/prisma'
-import { divideCategoriesIntoGroups, runAgent, AGENTS_COUNT } from '../../../../lib/ai-agent'
+import { divideCategoriesIntoGroups, runAgent } from '../../../../lib/ai-agent'
 
-export const maxDuration = 60
+export const maxDuration = 10
 export const dynamic = 'force-dynamic'
+
+const AGENTS_LIGHT = 4
 
 export async function GET() {
   const startTime = Date.now()
 
   try {
-    const groups = divideCategoriesIntoGroups(AGENTS_COUNT)
+    const groups = divideCategoriesIntoGroups(AGENTS_LIGHT)
 
-    const agentPromises = groups.map((group, i) => {
-      const delay = i * 500
-      return new Promise<any>(resolve =>
-        setTimeout(() => resolve(runAgent(i, group.groupName, group.categories)), delay)
-      )
-    })
+    const agentPromises = groups.map((group, i) =>
+      runAgent(i, group.groupName, group.categories)
+    )
 
     const agentResults = await Promise.all(agentPromises)
 
@@ -25,6 +24,7 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
+      type: 'ai',
       agents: agentResults.map((r: any) => ({
         id: r.agentId,
         group: r.groupName,
