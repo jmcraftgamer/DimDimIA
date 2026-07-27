@@ -1,58 +1,11 @@
 import { NextResponse } from 'next/server'
 import prisma from '../../../../lib/prisma'
-import { scrapeMLApiByQueries } from '../../../../lib/scrapers/mercadolivre-api'
-import { MLB_CATEGORIES, MLBCategory } from '../../../../lib/scrapers/mercadolivre-api'
-import { callOpenRouter } from '../../../../lib/ai-agent'
+import { scrapeMLApiSearch, MLB_CATEGORIES } from '../../../../lib/scrapers/mercadolivre-api'
+import { ScrapedProduct } from '../../../../types'
+import { checkSeller } from '../../../../lib/whitelist'
 
 export const maxDuration = 10
 export const dynamic = 'force-dynamic'
-
-const AGENTS = 2
-const CATS_PER = 2
-const QUERIES_PER = 4
-
-const FALLBACK_QUERIES: Record<string, string[]> = {
-  celulares: ['iphone', 'samsung galaxy', 'xiaomi', 'motorola'],
-  notebooks: ['notebook', 'ultrabook', 'notebook gamer', 'dell'],
-  informatica: ['notebook', 'placa de video', 'ssd', 'monitor'],
-  tv: ['smart tv', 'tv 4k', 'tv oled', 'samsung tv'],
-  games: ['playstation 5', 'xbox series', 'nintendo switch', 'cadeira gamer'],
-  eletrodomesticos: ['geladeira', 'air fryer', 'micro-ondas', 'fogao'],
-  fones: ['fone bluetooth', 'headset', 'airpods', 'fone sem fio'],
-  moda: ['tenis', 'camiseta', 'jaqueta', 'relogio'],
-  casa: ['sofa', 'cadeira', 'colchao', 'mesa'],
-  pet: ['racao', 'brinquedo pet', 'cama pet', 'coleira'],
-  audio: ['caixa de som', 'soundbar', 'home theater', 'microfone'],
-  ferramentas: ['furadeira', 'parafusadeira', 'kit ferramentas', 'serra'],
-  automotivo: ['bateria automotiva', 'oleo motor', 'som automotivo', 'pneu'],
-  livros: ['livro', 'best seller', 'romance', 'quadrinhos'],
-  esportes: ['bicicleta', 'esteira', 'suplemento', 'skate'],
-  instrumentos: ['violao', 'guitarra', 'teclado', 'bateria'],
-  saude: ['vitamina', 'whey', 'creatina', 'termogenico'],
-  cozinha: ['panela', 'jogo panelas', 'talheres', 'copo'],
-  decoracao: ['quadro', 'vaso', 'luminaria', 'tapete'],
-  moveis: ['sofa', 'mesa', 'estante', 'rack'],
-  brinquedos: ['lego', 'boneca', 'carrinho', 'jogo tabuleiro'],
-  relogios: ['relogio masculino', 'relogio feminino', 'smartwatch', 'apple watch'],
-  cameras: ['camera digital', 'canon', 'nikon', 'camera seguranca'],
-  pneus: ['pneu aro 15', 'pneu aro 16', 'pneu aro 17', 'pneu 14'],
-}
-
-function getFallbackQueries(slug: string): string[] {
-  const exact = FALLBACK_QUERIES[slug]
-  if (exact) return exact
-
-  const readable = slug.replace(/-/g, ' ')
-  const first = readable.split(' ')[0]
-  if (first && first.length > 2) {
-    return [readable, `${readable} promoção`, first, `${first} promoção`]
-  }
-  return ['promocao', 'oferta', 'desconto']
-}
-
-const AI_PROMPT = `Você é um especialista em promoções do Mercado Livre Brasil.
-Gere ${QUERIES_PER} queries de busca em português para encontrar produtos EM PROMOÇÃO na categoria abaixo.
-Retorne APENAS as queries, uma por linha, sem numeração.`
 
 function shufflePick<T>(arr: T[], n: number): T[] {
   const a = [...arr]
@@ -63,33 +16,84 @@ function shufflePick<T>(arr: T[], n: number): T[] {
   return a.slice(0, n)
 }
 
-async function runAgent(agentId: number, categories: MLBCategory[], deadline: number): Promise<{ saved: number; log: string }> {
-  let total = 0
-  const catNames = categories.map(c => c.name).join(', ')
-
-  for (const cat of categories) {
-    if (Date.now() > deadline) {
-      return { saved: total, log: `Agent ${agentId} [${catNames}]: ${total} (timeout)` }
-    }
-
-    let queries: string[] = []
-    const aiRes = await callOpenRouter(AI_PROMPT, `Categoria: ${cat.name}`)
-    if (aiRes) {
-      queries = aiRes.split('\n').map(l => l.replace(/^\d+[\.\)]\s*/, '').trim()).filter(l => l.length > 3).slice(0, QUERIES_PER)
-    }
-    if (queries.length === 0) {
-      queries = getFallbackQueries(cat.slug).slice(0, QUERIES_PER)
-    }
-
-    if (Date.now() > deadline) break
-    let products = await scrapeMLApiByQueries(cat.id, queries, 30)
-    if (products.length === 0) {
-      products = await scrapeMLApiByQueries(cat.id, ['promocao', 'oferta', 'desconto'], 20)
-    }
-    total += products.length
+function buildProductId(store: string, productUrl: string, name: string): string {
+  if (productUrl) {
+    const cleanUrl = productUrl.replace(/https?:\/\//, '').replace(/[^a-zA-Z0-9]/g, '-').substring(0, 60)
+    return `${store}-${cleanUrl}`
   }
+  return `${store}-${name.replace(/[^a-zA-Z0-9]/g, '-').substring(0, 40)}`
+}
 
-  return { saved: total, log: `Agent ${agentId} [${catNames}]: ${total}` }
+async function saveOrGetSeller(sellerName: string, store: string): Promise<string | null> {
+  if (!sellerName || sellerName === store) return null
+  const lower = sellerName.toLowerCase()
+  let seller = await prisma.seller.findFirst({ where: { name: lower, store } })
+  if (seller) return seller.id
+  const check = checkSeller(sellerName, store)
+  seller = await prisma.seller.create({
+    data: { name: lower, store, isVerified: check.isSafe, isKnownBrand: check.reason.includes('Marca conhecida') },
+  })
+  return seller.id
+}
+
+function calcDesirability(discount: number, position?: number): number {
+  const popularityBoost = position !== undefined ? Math.max(0, 1 - position / 1000) * 60 : 0
+  return Math.round(discount * 0.4 + popularityBoost)
+}
+
+async function saveProducts(products: ScrapedProduct[], catSlug: string, subName: string): Promise<number> {
+  let saved = 0
+  for (const p of products) {
+    if (!p.name || p.price <= 0) continue
+    if (!p.oldPrice || p.oldPrice <= p.price) continue
+    const discount = Math.round((1 - p.price / p.oldPrice) * 100)
+    if (discount < 5) continue
+    if ((p.availableQuantity ?? 0) < 50) continue
+    const desirability = calcDesirability(discount, p.position)
+
+    try {
+      const id = buildProductId(p.store, p.productUrl, p.name)
+      const existing = await prisma.product.findUnique({ where: { id } })
+      const sellerId = await saveOrGetSeller(p.sellerName || p.store, p.store).catch(() => null)
+
+      if (existing) {
+        await prisma.product.update({
+          where: { id },
+          data: {
+            price: p.price, oldPrice: p.oldPrice ?? existing.oldPrice,
+            rating: p.rating ?? existing.rating,
+            totalSales: p.totalSales ?? existing.totalSales,
+            freeShipping: p.freeShipping ?? existing.freeShipping,
+            category: catSlug, subcategory: subName,
+            isActive: true, isPromoted: true,
+            sellerId: sellerId ?? existing.sellerId,
+            score: desirability, position: p.position ?? existing.position,
+            reason: `${discount}% OFF`,
+            lastVerified: new Date(),
+          },
+        })
+      } else {
+        await prisma.product.create({
+          data: {
+            id, name: p.name, description: p.description || p.name,
+            price: p.price, oldPrice: p.oldPrice ?? null,
+            category: catSlug, subcategory: subName, store: p.store,
+            imageUrl: p.imageUrl || 'https://via.placeholder.com/200',
+            productUrl: p.productUrl || '',
+            rating: p.rating ?? null, totalSales: p.totalSales ?? null,
+            freeShipping: p.freeShipping ?? null,
+            isActive: true, isPromoted: true,
+            inStock: true, sellerId: sellerId ?? null,
+            score: desirability, position: p.position ?? null,
+            reason: `${discount}% OFF`,
+            lastVerified: new Date(),
+          },
+        })
+      }
+      saved++
+    } catch (_) {}
+  }
+  return saved
 }
 
 export async function GET() {
@@ -97,20 +101,28 @@ export async function GET() {
   const deadline = startTime + 8000
 
   try {
-    const selected = shufflePick(MLB_CATEGORIES, AGENTS * CATS_PER)
-    const groups: MLBCategory[][] = []
-    for (let i = 0; i < AGENTS; i++) {
-      groups.push(selected.slice(i * CATS_PER, (i + 1) * CATS_PER))
+    const cats = shufflePick(MLB_CATEGORIES, 4)
+    const logs: string[] = []
+    let totalSaved = 0
+
+    for (const cat of cats) {
+      if (Date.now() > deadline) {
+        logs.push(`${cat.name}: tempo`)
+        break
+      }
+
+      const products = await scrapeMLApiSearch(cat.id)
+      const saved = await saveProducts(products, cat.slug, cat.name)
+      logs.push(`${cat.name}: ${saved} salvos`)
+      totalSaved += saved
     }
 
-    const results = await Promise.all(groups.map((g, i) => runAgent(i, g, deadline)))
-    const totalSaved = results.reduce((s, r) => s + r.saved, 0)
     const activeProducts = await prisma.product.count({ where: { isActive: true } })
 
     return NextResponse.json({
       success: true,
       type: 'ai',
-      logs: results.map(r => r.log),
+      logs,
       totalSaved,
       activeProducts,
       elapsedMs: Date.now() - startTime,
