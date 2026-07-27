@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import prisma from '../../../../lib/prisma'
-import { scrapeMLApiSearch, MLB_CATEGORIES } from '../../../../lib/scrapers/mercadolivre-api'
+import { scrapeMLCategoryListings, MLB_CATEGORIES } from '../../../../lib/scrapers/mercadolivre-api'
 import { ScrapedProduct } from '../../../../types'
 import { checkSeller } from '../../../../lib/whitelist'
 
@@ -48,7 +48,6 @@ async function saveProducts(products: ScrapedProduct[], catSlug: string, subName
     if (!p.oldPrice || p.oldPrice <= p.price) continue
     const discount = Math.round((1 - p.price / p.oldPrice) * 100)
     if (discount < 5) continue
-    if ((p.availableQuantity ?? 0) < 50) continue
     const desirability = calcDesirability(discount, p.position)
 
     try {
@@ -101,7 +100,7 @@ export async function GET() {
   const deadline = startTime + 8000
 
   try {
-    const cats = shufflePick(MLB_CATEGORIES, 4)
+    const cats = shufflePick(MLB_CATEGORIES, 3)
     const logs: string[] = []
     let totalSaved = 0
 
@@ -111,9 +110,9 @@ export async function GET() {
         break
       }
 
-      const products = await scrapeMLApiSearch(cat.id)
+      const products = await scrapeMLCategoryListings(cat.slug, cat.name, 5)
       const saved = await saveProducts(products, cat.slug, cat.name)
-      logs.push(`${cat.name}: ${saved} salvos`)
+      logs.push(`${cat.name}: ${saved} salvos (${products.length} encontrados)`)
       totalSaved += saved
     }
 
