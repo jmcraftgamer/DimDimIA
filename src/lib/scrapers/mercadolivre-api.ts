@@ -1,6 +1,7 @@
 import axios from 'axios'
 import * as cheerio from 'cheerio'
 import { ScrapedProduct } from '../../types'
+import { getValidAccessToken, isMLApiConfigured } from '../ml-auth'
 
 const MIN_STOCK = 50
 
@@ -303,41 +304,25 @@ function apiProductToScraped(item: any, position: number): ScrapedProduct | null
 
 const BATCH_PARALLEL = 10
 const DELAY_BETWEEN_BATCHES = 100
+const OFFERS_MAX_PAGES = 30
 
 async function fetchApiPage(params: any): Promise<any[]> {
   try {
-    const { data } = await axios.get(API_BASE, { params, headers: HEADERS, timeout: 15000 })
+    const headers: Record<string, string> = { ...HEADERS }
+    const token = await getValidAccessToken()
+    if (token) headers['Authorization'] = `Bearer ${token}`
+
+    const { data } = await axios.get(API_BASE, { params, headers, timeout: 15000 })
     return data.results ?? []
   } catch {
     return []
   }
 }
 
-export async function scrapeMLByCategory(slug: string, catId?: string): Promise<ScrapedProduct[]> {
-  if (!catId) return []
+export async function scrapeMLOffers(maxPages = OFFERS_MAX_PAGES): Promise<ScrapedProduct[]> {
+  if (isMLApiConfigured()) return []
 
-  const catIdx = MLB_CATEGORIES.findIndex(c => c.id === catId)
-  const page = (catIdx % 20) + 1
-  const url = `https://www.mercadolivre.com.br/ofertas?page=${page}`
-
-  try {
-    const { data } = await axios.get(url, { headers: HEADERS, timeout: 20000 })
-    const $ = cheerio.load(data)
-    const products: ScrapedProduct[] = []
-
-    $('.poly-card').each((_, el) => {
-      const p = parsePolyCard($(el))
-      if (p) products.push(p)
-    })
-
-    return products
-  } catch {
-    return []
-  }
-}
-
-export async function scrapeMLCategoryListings(catSlug: string, catName: string, maxPages = 30): Promise<ScrapedProduct[]> {
-  const allProducts: ScrapedProduct[] = []
+  const all: ScrapedProduct[] = []
   const seen = new Set<string>()
 
   for (let batchStart = 1; batchStart <= maxPages; batchStart += BATCH_PARALLEL) {
@@ -346,7 +331,7 @@ export async function scrapeMLCategoryListings(catSlug: string, catName: string,
 
     const results = await Promise.allSettled(
       pages.map(page =>
-        axios.get(`https://www.mercadolivre.com.br/c/${catSlug}?page=${page}`, {
+        axios.get(`https://www.mercadolivre.com.br/ofertas?page=${page}`, {
           headers: HEADERS, timeout: 20000,
         }).then(r => r.data)
       )
@@ -361,7 +346,7 @@ export async function scrapeMLCategoryListings(catSlug: string, catName: string,
         const p = parsePolyCard($(el))
         if (p && !seen.has(p.productUrl)) {
           seen.add(p.productUrl)
-          allProducts.push(p)
+          all.push(p)
           count++
         }
       })
@@ -375,10 +360,22 @@ export async function scrapeMLCategoryListings(catSlug: string, catName: string,
     }
   }
 
-  return allProducts
+  return all
+}
+
+export async function scrapeMLByCategory(slug: string, catId?: string): Promise<ScrapedProduct[]> {
+  if (isMLApiConfigured() && catId) return scrapeMLApiSearch(catId)
+  return scrapeMLOffers(10)
+}
+
+export async function scrapeMLCategoryListings(catSlug: string, catName: string, maxPages = 30): Promise<ScrapedProduct[]> {
+  if (isMLApiConfigured()) return scrapeMLApiSearchMulti(catSlug, catName)
+  return scrapeMLOffers(maxPages)
 }
 
 export async function scrapeMLApiSearch(catId: string): Promise<ScrapedProduct[]> {
+  if (!isMLApiConfigured()) return []
+
   const products: ScrapedProduct[] = []
   const seen = new Set<string>()
   const offsets = Array.from({ length: 20 }, (_, i) => i * 50)
@@ -467,6 +464,8 @@ function getKeywords(slug: string): string[] {
 }
 
 export async function scrapeMLApiSearchMulti(catId: string, catSlug: string): Promise<ScrapedProduct[]> {
+  if (!isMLApiConfigured()) return scrapeMLOffers(15)
+
   const products: ScrapedProduct[] = []
   const seen = new Set<string>()
   const queries = getKeywords(catSlug)
@@ -513,6 +512,8 @@ export async function scrapeMLApiSearchMulti(catId: string, catSlug: string): Pr
 }
 
 export async function scrapeMLApiByQueries(catId: string, queries: string[], maxResults = 200): Promise<ScrapedProduct[]> {
+  if (!isMLApiConfigured()) return scrapeMLOffers(15)
+
   const products: ScrapedProduct[] = []
   const seen = new Set<string>()
 

@@ -8,11 +8,14 @@ interface ChatBoxProps {
   embedded?: boolean
 }
 
+interface MessageWithProducts extends ChatMessage {
+  products?: any[]
+}
+
 export default function ChatBox({ embedded }: ChatBoxProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [messages, setMessages] = useState<MessageWithProducts[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [products, setProducts] = useState<any[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -31,7 +34,7 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
   const handleSend = async () => {
     if (!input.trim() || loading) return
 
-    const userMessage: ChatMessage = {
+    const userMessage: MessageWithProducts = {
       id: Date.now().toString(),
       content: input,
       role: 'user',
@@ -54,19 +57,17 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
 
       const data = await res.json()
 
-      const assistantMessage: ChatMessage = {
+      const assistantMessage: MessageWithProducts = {
         id: (Date.now() + 1).toString(),
         content: data.response || 'Desculpe, não consegui processar sua solicitação.',
         role: 'assistant',
         createdAt: new Date().toISOString(),
+        products: data.products?.length > 0 ? data.products : undefined,
       }
 
       setMessages((prev) => [...prev, assistantMessage])
-      if (data.products?.length > 0) {
-        setProducts(data.products)
-      }
     } catch (error) {
-      const errorMessage: ChatMessage = {
+      const errorMessage: MessageWithProducts = {
         id: (Date.now() + 1).toString(),
         content: 'Erro ao conectar com o servidor. Tente novamente.',
         role: 'assistant',
@@ -93,22 +94,15 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'file') => {
     const file = e.target.files?.[0]
     if (!file) return
-
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      const fileName = file.name
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          content: type === 'image' ? `[Imagem enviada: ${fileName}]` : `[Arquivo enviado: ${fileName}]`,
-          role: 'user',
-          createdAt: new Date().toISOString(),
-        },
-      ])
-    }
-    reader.readAsDataURL(file)
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now().toString(),
+        content: type === 'image' ? `[Imagem enviada: ${file.name}]` : `[Arquivo enviado: ${file.name}]`,
+        role: 'user',
+        createdAt: new Date().toISOString(),
+      },
+    ])
     e.target.value = ''
   }
 
@@ -142,6 +136,32 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
       el.style.height = 'auto'
       el.style.height = el.scrollHeight + 'px'
     }
+  }
+
+  const formatMessageContent = (content: string) => {
+    const lines = content.split('\n')
+    return lines.map((line, i) => {
+      const trimmed = line.trim()
+      if (trimmed.startsWith('## ')) {
+        return <h2 key={i} className="text-lg font-bold mt-4 mb-2">{trimmed.slice(3)}</h2>
+      }
+      if (trimmed.startsWith('### ')) {
+        return <h3 key={i} className="text-md font-semibold mt-3 mb-1">{trimmed.slice(4)}</h3>
+      }
+      if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
+        return <p key={i} className="font-bold mt-2">{trimmed.slice(2, -2)}</p>
+      }
+      if (trimmed.startsWith('1. ') || trimmed.startsWith('2. ') || trimmed.startsWith('3. ') ||
+          trimmed.startsWith('4. ') || trimmed.startsWith('5. ') || trimmed.startsWith('6. ') ||
+          trimmed.startsWith('7. ') || trimmed.startsWith('8. ') || trimmed.startsWith('9. ') ||
+          trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+        return <p key={i} className="ml-2 text-sm leading-relaxed">{trimmed}</p>
+      }
+      if (trimmed === '') {
+        return <div key={i} className="h-2" />
+      }
+      return <p key={i} className="text-sm leading-relaxed">{trimmed}</p>
+    })
   }
 
   const initialInput = !hasMessages && (
@@ -219,19 +239,61 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
   const chatMessages = hasMessages && (
     <div className="flex-1 overflow-y-auto space-y-4 px-4 py-6 max-w-3xl mx-auto w-full">
       {messages.map((msg) => (
-        <div
-          key={msg.id}
-          className={`fade-in flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-        >
-          <div
-            className={`max-w-[85%] rounded-2xl px-4 py-3 ${
-              msg.role === 'user'
-                ? 'bg-[#1a1a1a] text-white rounded-br-md'
-                : 'bg-[#f5f5f5] text-[#1a1a1a] rounded-bl-md'
-            }`}
-          >
-            <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+        <div key={msg.id} className="space-y-2">
+          <div className={`fade-in flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div
+              className={`max-w-[85%] rounded-2xl px-4 py-3 ${
+                msg.role === 'user'
+                  ? 'bg-[#1a1a1a] text-white rounded-br-md'
+                  : 'bg-[#f5f5f5] text-[#1a1a1a] rounded-bl-md'
+              }`}
+            >
+              {msg.role === 'assistant' ? formatMessageContent(msg.content) : (
+                <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+              )}
+            </div>
           </div>
+
+          {msg.role === 'assistant' && msg.products && msg.products.length > 0 && (
+            <div className="fade-in flex justify-start pl-2">
+              <div className="flex gap-3 overflow-x-auto pb-2 max-w-[90%]" style={{ scrollbarWidth: 'thin' }}>
+                {msg.products.map((p, i) => (
+                  <div key={i} className="flex-shrink-0 w-[180px]">
+                    <div className="bg-white rounded-xl border border-[#e5e5e5] overflow-hidden hover:shadow-md transition-shadow">
+                      <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="block">
+                        <div className="relative h-36 bg-gray-50 flex items-center justify-center p-2">
+                          <img
+                            src={p.imageUrl || 'https://via.placeholder.com/150'}
+                            alt={p.name}
+                            className="max-h-full max-w-full object-contain"
+                            onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150' }}
+                          />
+                          {p.discountPercent > 0 && (
+                            <span className="absolute top-1 left-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
+                              -{p.discountPercent}%
+                            </span>
+                          )}
+                        </div>
+                        <div className="p-2 space-y-1">
+                          <p className="text-[11px] text-gray-500 font-medium uppercase truncate">{p.store}</p>
+                          <p className="text-xs font-semibold line-clamp-2 leading-tight">{p.name}</p>
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-sm font-bold text-[#1a1a1a]">R$ {p.price?.toFixed(2)}</span>
+                            {p.oldPrice > 0 && (
+                              <span className="text-[10px] text-gray-400 line-through">R$ {p.oldPrice?.toFixed(2)}</span>
+                            )}
+                          </div>
+                          {p.freeShipping && (
+                            <span className="text-[10px] text-green-600 font-medium">Frete Grátis</span>
+                          )}
+                        </div>
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       ))}
 
@@ -243,19 +305,6 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
               <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:150ms]" />
               <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:300ms]" />
             </div>
-          </div>
-        </div>
-      )}
-
-      {products.length > 0 && !loading && (
-        <div className="space-y-3 mt-4">
-          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
-            Produtos encontrados
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {products.map((p, i) => (
-              <ProductCard key={i} product={p} />
-            ))}
           </div>
         </div>
       )}
