@@ -41,11 +41,15 @@ function shufflePick<T>(arr: T[], n: number): T[] {
   return a.slice(0, n)
 }
 
-async function runAgent(agentId: number, categories: MLBCategory[]): Promise<{ saved: number; log: string }> {
+async function runAgent(agentId: number, categories: MLBCategory[], deadline: number): Promise<{ saved: number; log: string }> {
   let total = 0
   const catNames = categories.map(c => c.name).join(', ')
 
   for (const cat of categories) {
+    if (Date.now() > deadline) {
+      return { saved: total, log: `Agent ${agentId} [${catNames}]: ${total} (timeout)` }
+    }
+
     let queries: string[] = []
     const aiRes = await callOpenRouter(AI_PROMPT, `Categoria: ${cat.name}`)
     if (aiRes) {
@@ -55,6 +59,7 @@ async function runAgent(agentId: number, categories: MLBCategory[]): Promise<{ s
       queries = FALLBACK_QUERIES[cat.slug]?.slice(0, QUERIES_PER) || ['promocao']
     }
 
+    if (Date.now() > deadline) break
     const products = await scrapeMLApiByQueries(cat.id, queries, 30)
     total += products.length
   }
@@ -64,6 +69,7 @@ async function runAgent(agentId: number, categories: MLBCategory[]): Promise<{ s
 
 export async function GET() {
   const startTime = Date.now()
+  const deadline = startTime + 8000
 
   try {
     const selected = shufflePick(MLB_CATEGORIES, AGENTS * CATS_PER)
@@ -72,7 +78,7 @@ export async function GET() {
       groups.push(selected.slice(i * CATS_PER, (i + 1) * CATS_PER))
     }
 
-    const results = await Promise.all(groups.map((g, i) => runAgent(i, g)))
+    const results = await Promise.all(groups.map((g, i) => runAgent(i, g, deadline)))
     const totalSaved = results.reduce((s, r) => s + r.saved, 0)
     const activeProducts = await prisma.product.count({ where: { isActive: true } })
 

@@ -38,42 +38,32 @@ export function divideCategoriesIntoGroups(count: number): { groupName: string; 
 }
 
 export async function callOpenRouter(systemPrompt: string, userPrompt: string): Promise<string | null> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const { data } = await axios.post(
-        OPENROUTER_URL,
-        {
-          model: 'openai/gpt-oss-20b:free',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-          ],
-          temperature: 0.3,
-          max_tokens: 1000,
+  try {
+    const { data } = await axios.post(
+      OPENROUTER_URL,
+      {
+        model: 'openai/gpt-oss-20b:free',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.3,
+        max_tokens: 500,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://dimdimia.app',
+          'X-Title': 'DimDimIA',
         },
-        {
-          headers: {
-            Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': 'https://dimdimia.app',
-            'X-Title': 'DimDimIA',
-          },
-          timeout: 30000,
-        }
-      )
-      return data.choices?.[0]?.message?.content || null
-    } catch (err: any) {
-      const status = err?.response?.status
-      if (status === 429) {
-        const wait = 2000 * (attempt + 1)
-        await new Promise(r => setTimeout(r, wait))
-        continue
+        timeout: 4000,
       }
-      if (attempt === 2) return null
-      await new Promise(r => setTimeout(r, 1000))
-    }
+    )
+    return data.choices?.[0]?.message?.content || null
+  } catch {
+    return null
   }
-  return null
 }
 
 const SYSTEM_PROMPT_GENERATE_QUERIES = `Você é um especialista em encontrar promoções no Mercado Livre Brasil.
