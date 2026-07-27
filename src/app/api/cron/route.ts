@@ -3,7 +3,7 @@ import prisma from '../../../lib/prisma'
 import { ScrapedProduct } from '../../../types'
 import {
   MLB_CATEGORIES,
-  scrapeMLApiSearch,
+  scrapeMLCategoryListings,
 } from '../../../lib/scrapers/mercadolivre-api'
 import { checkSeller } from '../../../lib/whitelist'
 
@@ -104,7 +104,7 @@ export async function GET() {
       const cat = MLB_CATEGORIES[idx]
       if (!cat) continue
 
-      const products = await scrapeMLApiSearch(cat.id)
+      const products = await scrapeMLCategoryListings(cat.slug, cat.name, 8)
       logs.push(`${cat.name}: ${products.length}`)
       if (products.length > 0) totalSaved += await saveProducts(products, cat.slug, cat.name)
 
