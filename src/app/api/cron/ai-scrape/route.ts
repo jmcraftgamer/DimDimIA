@@ -1,37 +1,85 @@
 import { NextResponse } from 'next/server'
 import prisma from '../../../../lib/prisma'
-import { divideCategoriesIntoGroups, runAgent } from '../../../../lib/ai-agent'
+import { scrapeMLApiByQueries } from '../../../../lib/scrapers/mercadolivre-api'
+import { MLB_CATEGORIES, MLBCategory } from '../../../../lib/scrapers/mercadolivre-api'
+import { callOpenRouter } from '../../../../lib/ai-agent'
 
 export const maxDuration = 10
 export const dynamic = 'force-dynamic'
 
-const AGENTS_LIGHT = 4
+const AGENTS = 2
+const CATS_PER = 2
+const QUERIES_PER = 4
+
+const FALLBACK_QUERIES: Record<string, string[]> = {
+  celulares: ['iphone', 'samsung galaxy', 'xiaomi', 'motorola'],
+  notebooks: ['notebook', 'ultrabook', 'notebook gamer', 'dell'],
+  informatica: ['notebook', 'placa de video', 'ssd', 'monitor'],
+  tv: ['smart tv', 'tv 4k', 'tv oled', 'samsung tv'],
+  games: ['playstation 5', 'xbox series', 'nintendo switch', 'cadeira gamer'],
+  eletrodomesticos: ['geladeira', 'air fryer', 'micro-ondas', 'fogao'],
+  fones: ['fone bluetooth', 'headset', 'airpods', 'fone sem fio'],
+  moda: ['tenis', 'camiseta', 'jaqueta', 'relogio'],
+  casa: ['sofa', 'cadeira', 'colchao', 'mesa'],
+  pet: ['racao', 'brinquedo pet', 'cama pet', 'coleira'],
+  audio: ['caixa de som', 'soundbar', 'home theater', 'microfone'],
+  bebe: ['fralda', 'carrinho bebe', 'berco', 'cadeirinha'],
+  ferramentas: ['furadeira', 'parafusadeira', 'kit ferramentas', 'serra'],
+  automotivo: ['bateria automotiva', 'oleo motor', 'som automotivo', 'pneu'],
+}
+
+const AI_PROMPT = `Você é um especialista em promoções do Mercado Livre Brasil.
+Gere ${QUERIES_PER} queries de busca em português para encontrar produtos EM PROMOÇÃO na categoria abaixo.
+Retorne APENAS as queries, uma por linha, sem numeração.`
+
+function shufflePick<T>(arr: T[], n: number): T[] {
+  const a = [...arr]
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]]
+  }
+  return a.slice(0, n)
+}
+
+async function runAgent(agentId: number, categories: MLBCategory[]): Promise<{ saved: number; log: string }> {
+  let total = 0
+  const catNames = categories.map(c => c.name).join(', ')
+
+  for (const cat of categories) {
+    let queries: string[] = []
+    const aiRes = await callOpenRouter(AI_PROMPT, `Categoria: ${cat.name}`)
+    if (aiRes) {
+      queries = aiRes.split('\n').map(l => l.replace(/^\d+[\.\)]\s*/, '').trim()).filter(l => l.length > 3).slice(0, QUERIES_PER)
+    }
+    if (queries.length === 0) {
+      queries = FALLBACK_QUERIES[cat.slug]?.slice(0, QUERIES_PER) || ['promocao']
+    }
+
+    const products = await scrapeMLApiByQueries(cat.id, queries, 30)
+    total += products.length
+  }
+
+  return { saved: total, log: `Agent ${agentId} [${catNames}]: ${total}` }
+}
 
 export async function GET() {
   const startTime = Date.now()
 
   try {
-    const groups = divideCategoriesIntoGroups(AGENTS_LIGHT)
+    const selected = shufflePick(MLB_CATEGORIES, AGENTS * CATS_PER)
+    const groups: MLBCategory[][] = []
+    for (let i = 0; i < AGENTS; i++) {
+      groups.push(selected.slice(i * CATS_PER, (i + 1) * CATS_PER))
+    }
 
-    const agentPromises = groups.map((group, i) =>
-      runAgent(i, group.groupName, group.categories)
-    )
-
-    const agentResults = await Promise.all(agentPromises)
-
-    const totalSaved = agentResults.reduce((s: number, r: any) => s + r.productsFound, 0)
+    const results = await Promise.all(groups.map((g, i) => runAgent(i, g)))
+    const totalSaved = results.reduce((s, r) => s + r.saved, 0)
     const activeProducts = await prisma.product.count({ where: { isActive: true } })
 
     return NextResponse.json({
       success: true,
       type: 'ai',
-      agents: agentResults.map((r: any) => ({
-        id: r.agentId,
-        group: r.groupName,
-        queries: r.queriesGenerated,
-        saved: r.productsFound,
-        error: r.error || null,
-      })),
+      logs: results.map(r => r.log),
       totalSaved,
       activeProducts,
       elapsedMs: Date.now() - startTime,

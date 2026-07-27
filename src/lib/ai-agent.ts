@@ -37,7 +37,7 @@ export function divideCategoriesIntoGroups(count: number): { groupName: string; 
   return groups
 }
 
-async function callOpenRouter(systemPrompt: string, userPrompt: string): Promise<string | null> {
+export async function callOpenRouter(systemPrompt: string, userPrompt: string): Promise<string | null> {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const { data } = await axios.post(
