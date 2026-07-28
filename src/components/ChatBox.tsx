@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { ChatMessage, PRESET_QUERIES } from '../types'
-import ProductCard from './ProductCard'
+import ChatLoading from './ChatLoading'
 
 interface ChatBoxProps {
   embedded?: boolean
@@ -12,10 +12,66 @@ interface MessageWithProducts extends ChatMessage {
   products?: any[]
 }
 
+function WalletAvatar() {
+  return (
+    <div className="relative w-9 h-9 shrink-0">
+      <svg viewBox="0 0 64 64" fill="none" className="w-full h-full">
+        <rect x="4" y="14" width="56" height="40" rx="6" fill="#1a1a1a" />
+        <rect x="8" y="18" width="48" height="32" rx="4" fill="#2d2d2d" />
+        <rect x="20" y="28" width="24" height="12" rx="3" fill="#f5c518" />
+        <rect x="22" y="30" width="20" height="2" rx="1" fill="#d4a017" />
+        <rect x="22" y="34" width="12" height="2" rx="1" fill="#d4a017" />
+        <circle cx="44" cy="22" r="3" fill="#f5c518" />
+        <circle cx="44" cy="22" r="1.5" fill="#1a1a1a" />
+      </svg>
+      <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border border-white" />
+    </div>
+  )
+}
+
+function TypewriterMessage({ content }: { content: string }) {
+  const lines = content.split('\n')
+  return (
+    <div className="space-y-0.5">
+      {lines.map((line, i) => {
+        const trimmed = line.trim()
+        return (
+          <div key={i} className="typewriter-line" style={{ animationDelay: `${i * 0.04}s` }}>
+            {renderLine(trimmed, i)}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function renderLine(trimmed: string, i: number) {
+  if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
+    return <p className="font-bold text-sm mt-2">{trimmed.slice(2, -2)}</p>
+  }
+  if (trimmed.startsWith('## ')) {
+    return <h2 className="text-lg font-bold mt-3 mb-1">{trimmed.slice(3)}</h2>
+  }
+  if (trimmed.startsWith('### ')) {
+    return <h3 className="text-md font-semibold mt-2 mb-1">{trimmed.slice(4)}</h3>
+  }
+  if (trimmed.startsWith('🎯') || trimmed.startsWith('✅') || trimmed.startsWith('❌')) {
+    return <p className="text-sm leading-relaxed">{trimmed}</p>
+  }
+  if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+    return <p className="ml-3 text-sm leading-relaxed">{trimmed}</p>
+  }
+  if (trimmed === '') {
+    return <div className="h-1" />
+  }
+  return <p className="text-sm leading-relaxed">{trimmed}</p>
+}
+
 export default function ChatBox({ embedded }: ChatBoxProps) {
   const [messages, setMessages] = useState<MessageWithProducts[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [loadingPhase, setLoadingPhase] = useState<'thinking' | 'searching' | 'evaluating'>('thinking')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -44,9 +100,10 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
     setMessages((prev) => [...prev, userMessage])
     setInput('')
     setLoading(true)
+    setLoadingPhase('thinking')
 
     try {
-      const res = await fetch('/api/chat', {
+      const res = await fetch('/api/chat?stream=1', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -55,18 +112,20 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
         }),
       })
 
-      const data = await res.json()
-
-      const assistantMessage: MessageWithProducts = {
-        id: (Date.now() + 1).toString(),
-        content: data.response || 'Desculpe, não consegui processar sua solicitação.',
-        role: 'assistant',
-        createdAt: new Date().toISOString(),
-        products: data.products?.length > 0 ? data.products : undefined,
+      if (res.headers.get('Content-Type')?.includes('text/event-stream')) {
+        await handleSSEResponse(res)
+      } else {
+        const data = await res.json()
+        const assistantMessage: MessageWithProducts = {
+          id: (Date.now() + 1).toString(),
+          content: data.response || 'Desculpe, não consegui processar sua solicitação.',
+          role: 'assistant',
+          createdAt: new Date().toISOString(),
+          products: data.products?.length > 0 ? data.products : undefined,
+        }
+        setMessages((prev) => [...prev, assistantMessage])
       }
-
-      setMessages((prev) => [...prev, assistantMessage])
-    } catch (error) {
+    } catch {
       const errorMessage: MessageWithProducts = {
         id: (Date.now() + 1).toString(),
         content: 'Erro ao conectar com o servidor. Tente novamente.',
@@ -76,6 +135,58 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
       setMessages((prev) => [...prev, errorMessage])
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleSSEResponse(res: Response) {
+    const reader = res.body?.getReader()
+    if (!reader) return
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let resultData: any = null
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const events = buffer.split('\n\n')
+      buffer = events.pop() || ''
+
+      for (const event of events) {
+        const lines = event.split('\n')
+        let eventType = ''
+        let eventData = ''
+
+        for (const line of lines) {
+          if (line.startsWith('event: ')) eventType = line.slice(7)
+          if (line.startsWith('data: ')) eventData = line.slice(6)
+        }
+
+        if (!eventData) continue
+
+        try {
+          const parsed = JSON.parse(eventData)
+          if (eventType === 'status') {
+            setLoadingPhase(parsed.phase)
+          } else if (eventType === 'product_count') {
+          } else if (eventType === 'result') {
+            resultData = parsed
+          }
+        } catch { }
+      }
+    }
+
+    if (resultData) {
+      const assistantMessage: MessageWithProducts = {
+        id: (Date.now() + 1).toString(),
+        content: resultData.response || 'Desculpe, não consegui processar sua solicitação.',
+        role: 'assistant',
+        createdAt: new Date().toISOString(),
+        products: resultData.products?.length > 0 ? resultData.products : undefined,
+      }
+      setMessages((prev) => [...prev, assistantMessage])
     }
   }
 
@@ -136,32 +247,6 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
       el.style.height = 'auto'
       el.style.height = el.scrollHeight + 'px'
     }
-  }
-
-  const formatMessageContent = (content: string) => {
-    const lines = content.split('\n')
-    return lines.map((line, i) => {
-      const trimmed = line.trim()
-      if (trimmed.startsWith('## ')) {
-        return <h2 key={i} className="text-lg font-bold mt-4 mb-2">{trimmed.slice(3)}</h2>
-      }
-      if (trimmed.startsWith('### ')) {
-        return <h3 key={i} className="text-md font-semibold mt-3 mb-1">{trimmed.slice(4)}</h3>
-      }
-      if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
-        return <p key={i} className="font-bold mt-2">{trimmed.slice(2, -2)}</p>
-      }
-      if (trimmed.startsWith('1. ') || trimmed.startsWith('2. ') || trimmed.startsWith('3. ') ||
-          trimmed.startsWith('4. ') || trimmed.startsWith('5. ') || trimmed.startsWith('6. ') ||
-          trimmed.startsWith('7. ') || trimmed.startsWith('8. ') || trimmed.startsWith('9. ') ||
-          trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-        return <p key={i} className="ml-2 text-sm leading-relaxed">{trimmed}</p>
-      }
-      if (trimmed === '') {
-        return <div key={i} className="h-2" />
-      }
-      return <p key={i} className="text-sm leading-relaxed">{trimmed}</p>
-    })
   }
 
   const initialInput = !hasMessages && (
@@ -237,33 +322,36 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
   )
 
   const chatMessages = hasMessages && (
-    <div className="flex-1 overflow-y-auto space-y-4 px-4 py-6 max-w-3xl mx-auto w-full">
+    <div className="flex-1 overflow-y-auto space-y-3 px-4 py-6 max-w-3xl mx-auto w-full">
       {messages.map((msg) => (
-        <div key={msg.id} className="space-y-2">
-          <div className={`fade-in flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+        <div key={msg.id} className={`fade-in flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+          <div className={`flex items-start gap-2 max-w-[88%] ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+            {msg.role === 'assistant' && <WalletAvatar />}
             <div
-              className={`max-w-[85%] rounded-2xl px-4 py-3 ${
+              className={`rounded-2xl px-4 py-3 ${
                 msg.role === 'user'
                   ? 'bg-[#1a1a1a] text-white rounded-br-md'
-                  : 'bg-[#f5f5f5] text-[#1a1a1a] rounded-bl-md'
+                  : 'bg-transparent rounded-bl-md'
               }`}
             >
-              {msg.role === 'assistant' ? formatMessageContent(msg.content) : (
+              {msg.role === 'assistant' ? (
+                <TypewriterMessage content={msg.content} />
+              ) : (
                 <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
               )}
             </div>
           </div>
 
           {msg.role === 'assistant' && msg.products && msg.products.length > 0 && (
-            <div className="fade-in space-y-4 pl-2 mt-3">
-              {msg.products.map((p, i) => (
+            <div className="pl-11 mt-2 space-y-3">
+              {msg.products.slice(0, 10).map((p, i) => (
                 <div key={i} className="bg-white rounded-xl border border-[#e5e5e5] overflow-hidden hover:shadow-md transition-shadow">
                   <div className="p-3 space-y-3">
                     <h3 className="font-bold text-sm leading-tight text-[#1a1a1a] line-clamp-2">
                       {p.name}
                     </h3>
                     <div className="flex gap-3">
-                      <div className="relative w-28 h-28 bg-gray-50 rounded-lg flex items-center justify-center shrink-0">
+                      <div className="relative w-24 h-24 bg-gray-50 rounded-lg flex items-center justify-center shrink-0">
                         <img
                           src={p.imageUrl || 'https://via.placeholder.com/150'}
                           alt={p.name}
@@ -279,7 +367,7 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
                       <div className="flex-1 min-w-0 space-y-1.5">
                         <p className="text-[11px] text-gray-500 font-medium uppercase">{p.store}</p>
                         <div className="flex items-baseline gap-1.5 flex-wrap">
-                          <span className="text-lg font-bold text-[#1a1a1a]">R$ {p.price?.toFixed(2)}</span>
+                          <span className="text-base font-bold text-[#1a1a1a]">R$ {p.price?.toFixed(2)}</span>
                           {p.oldPrice > 0 && (
                             <span className="text-xs text-gray-400 line-through">R$ {p.oldPrice?.toFixed(2)}</span>
                           )}
@@ -290,21 +378,18 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
                         {p.rating && (
                           <span className="block text-[11px] text-gray-500">★ {p.rating}/5{p.totalSales ? ` · ${p.totalSales} vendidos` : ''}</span>
                         )}
-                        {p.sellerName && (
-                          <span className="block text-[11px] text-gray-400">{p.sellerName}</span>
-                        )}
                         <a
                           href={p.productUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-block mt-1 px-4 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg hover:bg-gray-800 transition-colors"
+                          className="inline-block mt-1 px-4 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg hover:bg-gray-800 transition-colors text-center"
                         >
                           Comprar
                         </a>
                       </div>
                     </div>
                     {p.description && p.description !== p.name && (
-                      <p className="text-xs text-gray-500 leading-relaxed line-clamp-3">{p.description}</p>
+                      <p className="text-xs text-gray-500 leading-relaxed line-clamp-2">{p.description}</p>
                     )}
                   </div>
                 </div>
@@ -315,15 +400,7 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
       ))}
 
       {loading && (
-        <div className="flex justify-start fade-in">
-          <div className="bg-[#f5f5f5] rounded-2xl rounded-bl-md px-4 py-3">
-            <div className="flex gap-1.5">
-              <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0ms]" />
-              <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:150ms]" />
-              <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:300ms]" />
-            </div>
-          </div>
-        </div>
+        <ChatLoading phase={loadingPhase} />
       )}
 
       <div ref={messagesEndRef} />
@@ -394,10 +471,21 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
     <div className={`flex flex-col ${embedded ? '' : hasMessages ? 'h-screen' : 'min-h-screen'}`}>
       {!hasMessages && (
         <div className={`flex flex-col items-center justify-center px-4 ${embedded ? 'py-12' : 'flex-1 pt-24 pb-12'}`}>
-          <h1 className="font-display text-7xl md:text-9xl font-black gradient-text mb-3 tracking-tight">
+          <div className="w-20 h-20 mb-4">
+            <svg viewBox="0 0 64 64" fill="none" className="w-full h-full drop-shadow-lg">
+              <rect x="4" y="14" width="56" height="40" rx="6" fill="#1a1a1a" />
+              <rect x="8" y="18" width="48" height="32" rx="4" fill="#2d2d2d" />
+              <rect x="20" y="28" width="24" height="12" rx="3" fill="#f5c518" />
+              <rect x="22" y="30" width="20" height="2" rx="1" fill="#d4a017" />
+              <rect x="22" y="34" width="12" height="2" rx="1" fill="#d4a017" />
+              <circle cx="44" cy="22" r="3" fill="#f5c518" />
+              <circle cx="44" cy="22" r="1.5" fill="#1a1a1a" />
+            </svg>
+          </div>
+          <h1 className="font-display text-5xl md:text-7xl font-black gradient-text mb-1 tracking-tight">
             DimDimIA
           </h1>
-          <p className="text-gray-500 text-xl md:text-2xl font-light mb-10">
+          <p className="text-gray-500 text-lg md:text-xl font-light mb-8">
             As Melhores Promoções da Net
           </p>
 

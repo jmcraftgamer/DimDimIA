@@ -81,19 +81,30 @@ export async function scrapeSpecificStore(store: string, query: string): Promise
 }
 
 export async function searchProducts(query: string): Promise<ScrapedProduct[]> {
-  const results = await scrapeAllStores(query)
-  const allProducts: ScrapedProduct[] = []
+  const queries = [query]
+  const words = query.split(' ').filter(w => w.length > 3)
+  if (words.length > 1) {
+    queries.push(words.join(' '))
+  }
 
-  for (const result of results) {
-    if (result.products.length > 0) {
-      const withStore = result.products.map((p) => ({
-        ...p,
-        store: result.store,
-      }))
-      allProducts.push(...withStore)
+  const allProducts: ScrapedProduct[] = []
+  const seen = new Set<string>()
+
+  for (const q of queries) {
+    const results = await scrapeAllStores(q)
+    for (const result of results) {
+      if (result.products.length > 0) {
+        for (const p of result.products) {
+          const key = p.productUrl || p.name
+          if (!seen.has(key)) {
+            seen.add(key)
+            allProducts.push({ ...p, store: result.store })
+          }
+        }
+      }
     }
   }
 
   allProducts.sort((a, b) => a.price - b.price)
-  return allProducts.slice(0, 50)
+  return allProducts.slice(0, 500)
 }

@@ -37,7 +37,7 @@ REGRAS:
 - Se não encontrar produtos relevantes, avise honestamente
 
 ANÁLISE OBRIGATÓRIA DE REQUISITOS:
-Você receberá MUITOS produtos (até 100). Analise todos, mas na resposta:
+Você receberá MUITOS produtos (até 500). Analise todos, mas na resposta:
 - Mostre apenas os TOP 5-10 melhores produtos que atendem os requisitos
 - Para cada produto aprovado, escreva o NOME DO PRODUTO em negrito, depois uma breve análise de por que ele atende
 - Se menos de 5 produtos atenderem, mostre apenas os que atendem
@@ -50,6 +50,29 @@ Preço: de R$ 2.499 por R$ 1.999 (-20% OFF)
 
 Faça uma análise sincera. Não invente informações. Use APENAS os dados recebidos.`
 
+function buildProductList(scrapedProducts: any[]) {
+  return scrapedProducts.map((p, i) => {
+    const discount = p.oldPrice && p.oldPrice > p.price
+      ? Math.round((1 - p.price / p.oldPrice) * 100)
+      : 0
+    return {
+      index: i + 1,
+      name: p.name,
+      price: p.price,
+      oldPrice: p.oldPrice || 0,
+      discountPercent: discount,
+      store: p.store,
+      imageUrl: p.imageUrl,
+      productUrl: p.productUrl,
+      freeShipping: p.freeShipping || false,
+      sellerName: p.sellerName || '',
+      rating: p.rating || null,
+      totalSales: p.totalSales || null,
+      description: p.description || p.name,
+    }
+  })
+}
+
 async function callAi(messages: { role: string; content: string }[], systemPrompt: string): Promise<string | null> {
   const cf = await chatWithCloudflare(messages, systemPrompt)
   if (cf) return cf
@@ -57,12 +80,18 @@ async function callAi(messages: { role: string; content: string }[], systemPromp
 }
 
 export async function POST(request: NextRequest) {
+  const { searchParams } = new URL(request.url)
+  const isStream = searchParams.get('stream') === '1'
+
   try {
     const session = await getServerSession()
     const { message, history } = await request.json()
 
     if (!message) {
-      return NextResponse.json({ error: 'Mensagem é obrigatória' }, { status: 400 })
+      const body = { error: 'Mensagem é obrigatória' }
+      return isStream
+        ? streamResponse([{ event: 'error', data: body }, { event: 'done', data: {} }])
+        : NextResponse.json(body, { status: 400 })
     }
 
     const lowercaseMsg = message.toLowerCase()
@@ -94,45 +123,49 @@ export async function POST(request: NextRequest) {
           if (!rateLimit.allowed) {
             scrapedProducts = await searchProducts(message)
             productList = buildProductList(scrapedProducts.slice(0, 10))
-
             await prisma.chatMessage.create({ data: { content: message, role: 'user', userId: user.id } })
-
-            if (productList.length > 0) {
-              return NextResponse.json({ response: AI_LIMIT_MESSAGE, products: productList })
-            }
-            return NextResponse.json({ response: AI_LIMIT_MESSAGE, products: [] })
+            const body = productList.length > 0
+              ? { response: AI_LIMIT_MESSAGE, products: productList }
+              : { response: AI_LIMIT_MESSAGE, products: [] }
+            if (isStream) return streamResponse([{ event: 'result', data: body }, { event: 'done', data: {} }])
+            return NextResponse.json(body)
           }
         }
       }
 
-      extractedParams = await extractSearchParams(message)
+      if (isStream) {
+        const encoder = new TextEncoder()
+        const stream = new ReadableStream({
+          async start(controller) {
+            const send = (event: string, data: any) => {
+              controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
+            }
+            try {
+              await processChatStream(message, history, session, send, controller, encoder)
+            } catch (err: any) {
+              console.error('Chat stream error:', err)
+              send('error', { message: 'Erro interno do servidor' })
+            } finally {
+              send('done', {})
+              controller.close()
+            }
+          },
+        })
+        return new Response(stream, {
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+          },
+        })
+      }
 
+      extractedParams = await extractSearchParams(message)
       const searchQuery = extractedParams?.productName || message
-      console.log(`[Chat] Query extraída: "${extractedParams?.productName}" | Buscando: "${searchQuery}"`)
+      console.log(`[Chat] Query: "${searchQuery}"`)
 
       scrapedProducts = await searchProducts(searchQuery)
-      scrapedProducts = scrapedProducts.slice(0, 100)
-
-      productList = scrapedProducts.map((p, i) => {
-        const discount = p.oldPrice && p.oldPrice > p.price
-          ? Math.round((1 - p.price / p.oldPrice) * 100)
-          : 0
-        return {
-          index: i + 1,
-          name: p.name,
-          price: p.price,
-          oldPrice: p.oldPrice || 0,
-          discountPercent: discount,
-          store: p.store,
-          imageUrl: p.imageUrl,
-          productUrl: p.productUrl,
-          freeShipping: p.freeShipping || false,
-          sellerName: p.sellerName || '',
-          rating: p.rating || null,
-          totalSales: p.totalSales || null,
-          description: p.description || p.name,
-        }
-      })
+      productList = buildProductList(scrapedProducts)
     }
 
     if (session?.user?.email) {
@@ -141,18 +174,18 @@ export async function POST(request: NextRequest) {
         const rateLimit = await checkAiRateLimit(user.id)
         if (!rateLimit.allowed) {
           await prisma.chatMessage.create({ data: { content: message, role: 'user', userId: user.id } })
-
-          if (productList.length > 0) {
-            return NextResponse.json({ response: AI_LIMIT_MESSAGE, products: productList })
-          }
-          return NextResponse.json({ response: AI_LIMIT_MESSAGE, products: [] })
+          const body = productList.length > 0
+            ? { response: AI_LIMIT_MESSAGE, products: productList }
+            : { response: AI_LIMIT_MESSAGE, products: [] }
+          if (isStream) return streamResponse([{ event: 'result', data: body }, { event: 'done', data: {} }])
+          return NextResponse.json(body)
         }
       }
     }
 
     if (productList.length > 0) {
       const requirements = extractedParams?.requirements
-        ? `\n\nREQUISITOS DO USUÁRIO:\n- Produto: ${extractedParams.productName}${extractedParams.brand ? `\n- Marca: ${extractedParams.brand}` : ''}${extractedParams.specs.length > 0 ? `\n- Especificações: ${extractedParams.specs.join(', ')}` : ''}${extractedParams.minPrice ? `\n- Preço mínimo: R$ ${extractedParams.minPrice}` : ''}${extractedParams.maxPrice ? `\n- Preço máximo: R$ ${extractedParams.maxPrice}` : ''}\n- Resumo: ${extractedParams.requirements}`
+        ? `${extractedParams.productName}${extractedParams.brand ? `, ${extractedParams.brand}` : ''}${extractedParams.specs.length > 0 ? `, ${extractedParams.specs.join(', ')}` : ''}${extractedParams.maxPrice ? `, até R$ ${extractedParams.maxPrice}` : ''}`
         : ''
 
       const productContext = productList.map(p =>
@@ -162,17 +195,15 @@ export async function POST(request: NextRequest) {
       const messages = history || []
       messages.push({
         role: 'user',
-        content: `O usuário perguntou: "${message}"${requirements}
+        content: `O usuário perguntou: "${message}"
 
-Aqui estão TODOS os ${productList.length} produtos REAIS encontrados:
+REQUISITOS: ${requirements || 'Nenhum específico'}
+
+Total de ${productList.length} produtos reais encontrados:
 
 ${productContext}
 
-Analise todos esses produtos. Na sua resposta:
-1. Mostre APENAS os melhores (top 5-10) que REALMENTE atendem os requisitos
-2. Para cada um, escreva o NOME em negrito, preço, desconto, e explique POR QUE atende
-3. Se nenhum atender completamente, mostre os mais próximos e avise
-4. Seja direto e útil - o usuário quer economizar`
+Analise todos. Mostre APENAS os TOP 5-10 melhores que atendem. Para cada um: nome em negrito, preço, desconto, e por que atende.`
       })
 
       const response = await callAi(messages, SYSTEM_PROMPT) || 'Desculpe, não consegui processar sua solicitação no momento. Tente novamente mais tarde.'
@@ -185,13 +216,15 @@ Analise todos esses produtos. Na sua resposta:
         }
       }
 
-      return NextResponse.json({ response, products: productList })
+      const body = { response, products: productList }
+      if (isStream) return streamResponse([{ event: 'result', data: body }, { event: 'done', data: {} }])
+      return NextResponse.json(body)
     }
 
     if (isProductRequest && scrapedProducts.length === 0) {
       const messages = history || []
       messages.push({ role: 'user', content: message })
-      const response = await callAi(messages, SYSTEM_PROMPT) || 'Desculpe, não consegui processar sua solicitação no momento. Tente novamente mais tarde.'
+      const response = await callAi(messages, SYSTEM_PROMPT) || 'Desculpe, não consegui processar sua solicitação no momento.'
 
       if (session?.user?.email) {
         const user = await prisma.user.findUnique({ where: { email: session.user.email } })
@@ -201,12 +234,14 @@ Analise todos esses produtos. Na sua resposta:
         }
       }
 
-      return NextResponse.json({ response, products: [] })
+      const body = { response, products: [] }
+      if (isStream) return streamResponse([{ event: 'result', data: body }, { event: 'done', data: {} }])
+      return NextResponse.json(body)
     }
 
     const messages = history || []
     messages.push({ role: 'user', content: message })
-    const response = await callAi(messages, SYSTEM_PROMPT) || 'Desculpe, não consegui processar sua solicitação no momento. Tente novamente mais tarde.'
+    const response = await callAi(messages, SYSTEM_PROMPT) || 'Desculpe, não consegui processar sua solicitação no momento.'
 
     if (session?.user?.email) {
       const user = await prisma.user.findUnique({ where: { email: session.user.email } })
@@ -216,32 +251,88 @@ Analise todos esses produtos. Na sua resposta:
       }
     }
 
-    return NextResponse.json({ response, products: [] })
+    const body = { response, products: [] }
+    if (isStream) return streamResponse([{ event: 'result', data: body }, { event: 'done', data: {} }])
+    return NextResponse.json(body)
   } catch (error: any) {
     console.error('Chat API error:', error)
-    return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 })
+    const body = { error: 'Erro interno do servidor' }
+    if (isStream) return streamResponse([{ event: 'error', data: body }, { event: 'done', data: {} }])
+    return NextResponse.json(body, { status: 500 })
   }
 }
 
-function buildProductList(scrapedProducts: any[]) {
-  return scrapedProducts.map((p, i) => {
-    const discount = p.oldPrice && p.oldPrice > p.price
-      ? Math.round((1 - p.price / p.oldPrice) * 100)
-      : 0
-    return {
-      index: i + 1,
-      name: p.name,
-      price: p.price,
-      oldPrice: p.oldPrice || 0,
-      discountPercent: discount,
-      store: p.store,
-      imageUrl: p.imageUrl,
-      productUrl: p.productUrl,
-      freeShipping: p.freeShipping || false,
-      sellerName: p.sellerName || '',
-      rating: p.rating || null,
-      totalSales: p.totalSales || null,
-      description: p.description || p.name,
-    }
+async function processChatStream(
+  message: string,
+  history: any[],
+  session: any,
+  send: (event: string, data: any) => void,
+  controller: ReadableStreamDefaultController,
+  encoder: TextEncoder
+) {
+  send('status', { phase: 'thinking' })
+  await sleep(800)
+
+  const extractedParams = await extractSearchParams(message)
+  const searchQuery = extractedParams?.productName || message
+  console.log(`[Chat] Query extraída: "${extractedParams?.productName}"`)
+
+  send('status', { phase: 'searching' })
+
+  const rawProducts = await searchProducts(searchQuery)
+  const productList = buildProductList(rawProducts)
+
+  send('product_count', { total: productList.length })
+
+  send('status', { phase: 'evaluating' })
+  await sleep(500)
+
+  const requirements = extractedParams?.requirements
+    ? `${extractedParams.productName}${extractedParams.brand ? `, ${extractedParams.brand}` : ''}${extractedParams.specs.length > 0 ? `, ${extractedParams.specs.join(', ')}` : ''}${extractedParams.maxPrice ? `, até R$ ${extractedParams.maxPrice}` : ''}`
+    : ''
+
+  const productContext = productList.slice(0, 200).map(p =>
+    `P${p.index} | ${p.name} | ${p.store} | R$ ${p.price.toFixed(2)}${p.oldPrice > 0 ? ` de R$ ${p.oldPrice.toFixed(2)} (-${p.discountPercent}%)` : ''}${p.freeShipping ? ' | Frete Grátis' : ''}${p.rating ? ` | ${p.rating}/5` : ''} | ${p.productUrl}`
+  ).join('\n')
+
+  const msgs = history || []
+  msgs.push({
+    role: 'user',
+    content: `O usuário perguntou: "${message}"
+
+REQUISITOS: ${requirements || 'Nenhum específico'}
+
+Total de ${productList.length} produtos reais encontrados (mostrando os 200 melhores):
+
+${productContext}
+
+Analise todos. Mostre APENAS os TOP 5-10 melhores que atendem os requisitos. Para cada um: nome em negrito, preço, desconto, e por que atende.`
   })
+
+  const response = await callAi(msgs, SYSTEM_PROMPT) || 'Desculpe, não consegui processar sua solicitação no momento.'
+
+  if (session?.user?.email) {
+    const user = await prisma.user.findUnique({ where: { email: session.user.email } })
+    if (user) {
+      await prisma.chatMessage.create({ data: { content: message, role: 'user', userId: user.id } })
+      await prisma.chatMessage.create({ data: { content: response, role: 'assistant', userId: user.id } })
+    }
+  }
+
+  send('result', { response, products: productList.slice(0, 20) })
+}
+
+function streamResponse(events: { event: string; data: any }[]) {
+  const encoder = new TextEncoder()
+  const body = events.map(e => `event: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`).join('')
+  return new Response(body, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+    },
+  })
+}
+
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
