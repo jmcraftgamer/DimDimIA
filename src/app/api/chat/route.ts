@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { searchProducts } from '../../../lib/scrapers'
 import { chatWithCloudflare } from '../../../lib/cloudflare-ai'
 import { checkAiRateLimit, AI_LIMIT_MESSAGE } from '../../../lib/rate-limit'
+import { extractSearchParams, SearchParams } from '../../../lib/query-extractor'
 import { chatWithModel, MODELS } from '../../../lib/openhauter'
 import prisma from '../../../lib/prisma'
 
@@ -13,27 +14,34 @@ SUAS CAPACIDADES:
 - Você recebe resultados de busca REAIS sempre que o usuário pede produtos
 - Você ANALISA e COMPARA os resultados para recomendar o melhor custo-benefício
 
-QUANDO RECEBER RESULTADOS DE PRODUTOS:
-1. Analise CADA produto individualmente
-2. Destaque o desconto real: "de R$ X por R$ Y (Z% OFF)"
-3. Mencione frete grátis, cupons e avaliações quando disponíveis
-4. Compare produtos similares entre lojas diferentes
-5. Recomende o MELHOR custo-benefício explicando o porquê
-6. Seja detalhista e útil — o usuário quer ECONOMIZAR dinheiro
+COMO ANALISAR PRODUTOS:
+1. O usuário vai enviar REQUISITOS específicos (marca, specs, preço, performance)
+2. Você deve analisar CADA produto individualmente contra esses requisitos
+3. Só inclua produtos que REALMENTE atendem os requisitos
+4. Se o usuário pediu marca X, só mostre produtos da marca X
+5. Se o usuário pediu preço até X, só mostre produtos até X (ou muito próximos)
+6. Se o usuário pediu especificações (DDR5, 32GB, SSD), verifique se o produto tem
 
 FORMATO DE RESPOSTA COM PRODUTOS:
-- Use uma estrutura clara: lista numerada ou tópicos
-- Para cada produto relevante, inclua: nome, preço COM desconto, % OFF, loja
-- SEMPRE mencione o valor do desconto (ex: "de R$ 199 por R$ 129 — 35% OFF")
-- Destaque ofertas especiais (frete grátis, cupom, etc.)
-- Ao final, dê sua recomendação pessoal
+- Explique por que cada produto atende os requisitos do usuário
+- Destaque o desconto real: "de R$ X por R$ Y (Z% OFF)"
+- Mencione frete grátis, avaliações quando disponíveis
+- Compare produtos similares entre lojas diferentes
+- Recomende o MELHOR custo-benefício explicando o porquê
+- Se NENHUM produto atender, avise honestamente e mostre os mais próximos
 
 REGRAS:
 - Responda SEMPRE em português brasileiro
 - Seja natural e conversacional, mas INFORMATIVA
 - NUNCA finja resultados — use apenas os dados reais que recebeu
 - Se não encontrar produtos relevantes, avise honestamente
-- Se o usuário pedir algo que não seja produto, converse normalmente`
+
+ANÁLISE OBRIGATÓRIA DE REQUISITOS:
+Sempre que receber produtos, analise cada um contra os requisitos do usuário.
+Exemplo: usuário pediu "PC que roda GTA 5 no Ultra, até R$ 5000"
+- PC #1: RTX 3060 + R$ 4500 → ATENDE (roda GTA Ultra, dentro do orçamento) ✓
+- PC #2: GTX 1650 + R$ 3200 → NÃO ATENDE (não roda GTA Ultra) ✗
+- PC #3: RTX 4070 + R$ 8000 → NÃO ATENDE (acima do orçamento) ✗`
 
 async function callAi(messages: { role: string; content: string }[], systemPrompt: string): Promise<string | null> {
   const cf = await chatWithCloudflare(messages, systemPrompt)
@@ -69,11 +77,34 @@ export async function POST(request: NextRequest) {
 
     let scrapedProducts: any[] = []
     let productList: any[] = []
+    let extractedParams: SearchParams | null = null
 
     if (isProductRequest) {
-      console.log(`[Chat] Buscando produtos para: "${message}"`)
-      scrapedProducts = await searchProducts(message)
-      scrapedProducts = scrapedProducts.slice(0, 10)
+      if (session?.user?.email) {
+        const user = await prisma.user.findUnique({ where: { email: session.user.email } })
+        if (user) {
+          const rateLimit = await checkAiRateLimit(user.id)
+          if (!rateLimit.allowed) {
+            scrapedProducts = await searchProducts(message)
+            productList = buildProductList(scrapedProducts.slice(0, 10))
+
+            await prisma.chatMessage.create({ data: { content: message, role: 'user', userId: user.id } })
+
+            if (productList.length > 0) {
+              return NextResponse.json({ response: AI_LIMIT_MESSAGE, products: productList })
+            }
+            return NextResponse.json({ response: AI_LIMIT_MESSAGE, products: [] })
+          }
+        }
+      }
+
+      extractedParams = await extractSearchParams(message)
+
+      const searchQuery = extractedParams?.productName || message
+      console.log(`[Chat] Query extraída: "${extractedParams?.productName}" | Buscando: "${searchQuery}"`)
+
+      scrapedProducts = await searchProducts(searchQuery)
+      scrapedProducts = scrapedProducts.slice(0, 25)
 
       productList = scrapedProducts.map((p, i) => {
         const discount = p.oldPrice && p.oldPrice > p.price
@@ -107,13 +138,16 @@ export async function POST(request: NextRequest) {
           if (productList.length > 0) {
             return NextResponse.json({ response: AI_LIMIT_MESSAGE, products: productList })
           }
-
           return NextResponse.json({ response: AI_LIMIT_MESSAGE, products: [] })
         }
       }
     }
 
     if (productList.length > 0) {
+      const requirements = extractedParams?.requirements
+        ? `\n\nREQUISITOS DO USUÁRIO:\n- Produto: ${extractedParams.productName}${extractedParams.brand ? `\n- Marca: ${extractedParams.brand}` : ''}${extractedParams.specs.length > 0 ? `\n- Especificações: ${extractedParams.specs.join(', ')}` : ''}${extractedParams.minPrice ? `\n- Preço mínimo: R$ ${extractedParams.minPrice}` : ''}${extractedParams.maxPrice ? `\n- Preço máximo: R$ ${extractedParams.maxPrice}` : ''}\n- Resumo: ${extractedParams.requirements}`
+        : ''
+
       const productContext = productList.map(p =>
         `PRODUTO ${p.index}: "${p.name}"
 Loja: ${p.store}
@@ -126,13 +160,16 @@ Link: ${p.productUrl}`
       const messages = history || []
       messages.push({
         role: 'user',
-        content: `O usuário perguntou: "${message}"
+        content: `O usuário perguntou: "${message}"${requirements}
 
-Aqui estão os produtos REAIS encontrados nas lojas parceiras:
+Aqui estão OS PRODUTOS REAIS encontrados nas lojas parceiras:
 
 ${productContext}
 
-Com base nesses dados REAIS, analise e responda ao usuário. Destaque os melhores descontos, compare entre lojas, e dê sua recomendação.`
+Analise CADA produto e me diga:
+1. Quais produtos REALMENTE atendem os requisitos do usuário?
+2. Qual o melhor custo-benefício?
+3. Para cada produto aprovado, explique por que ele atende.`
       })
 
       const response = await callAi(messages, SYSTEM_PROMPT) || 'Desculpe, não consegui processar sua solicitação no momento. Tente novamente mais tarde.'
@@ -181,4 +218,27 @@ Com base nesses dados REAIS, analise e responda ao usuário. Destaque os melhore
     console.error('Chat API error:', error)
     return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 })
   }
+}
+
+function buildProductList(scrapedProducts: any[]) {
+  return scrapedProducts.map((p, i) => {
+    const discount = p.oldPrice && p.oldPrice > p.price
+      ? Math.round((1 - p.price / p.oldPrice) * 100)
+      : 0
+    return {
+      index: i + 1,
+      name: p.name,
+      price: p.price,
+      oldPrice: p.oldPrice || 0,
+      discountPercent: discount,
+      store: p.store,
+      imageUrl: p.imageUrl,
+      productUrl: p.productUrl,
+      freeShipping: p.freeShipping || false,
+      sellerName: p.sellerName || '',
+      rating: p.rating || null,
+      totalSales: p.totalSales || null,
+      description: p.description || p.name,
+    }
+  })
 }
