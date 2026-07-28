@@ -255,43 +255,60 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
           </div>
 
           {msg.role === 'assistant' && msg.products && msg.products.length > 0 && (
-            <div className="fade-in flex justify-start pl-2">
-              <div className="flex gap-3 overflow-x-auto pb-2 max-w-[90%]" style={{ scrollbarWidth: 'thin' }}>
-                {msg.products.map((p, i) => (
-                  <div key={i} className="flex-shrink-0 w-[180px]">
-                    <div className="bg-white rounded-xl border border-[#e5e5e5] overflow-hidden hover:shadow-md transition-shadow">
-                      <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="block">
-                        <div className="relative h-36 bg-gray-50 flex items-center justify-center p-2">
-                          <img
-                            src={p.imageUrl || 'https://via.placeholder.com/150'}
-                            alt={p.name}
-                            className="max-h-full max-w-full object-contain"
-                            onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150' }}
-                          />
-                          {p.discountPercent > 0 && (
-                            <span className="absolute top-1 left-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
-                              -{p.discountPercent}%
-                            </span>
+            <div className="fade-in space-y-4 pl-2 mt-3">
+              {msg.products.map((p, i) => (
+                <div key={i} className="bg-white rounded-xl border border-[#e5e5e5] overflow-hidden hover:shadow-md transition-shadow">
+                  <div className="p-3 space-y-3">
+                    <h3 className="font-bold text-sm leading-tight text-[#1a1a1a] line-clamp-2">
+                      {p.name}
+                    </h3>
+                    <div className="flex gap-3">
+                      <div className="relative w-28 h-28 bg-gray-50 rounded-lg flex items-center justify-center shrink-0">
+                        <img
+                          src={p.imageUrl || 'https://via.placeholder.com/150'}
+                          alt={p.name}
+                          className="max-h-full max-w-full object-contain p-1"
+                          onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150' }}
+                        />
+                        {p.discountPercent > 0 && (
+                          <span className="absolute top-0 left-0 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-br-lg">
+                            -{p.discountPercent}%
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <p className="text-[11px] text-gray-500 font-medium uppercase">{p.store}</p>
+                        <div className="flex items-baseline gap-1.5 flex-wrap">
+                          <span className="text-lg font-bold text-[#1a1a1a]">R$ {p.price?.toFixed(2)}</span>
+                          {p.oldPrice > 0 && (
+                            <span className="text-xs text-gray-400 line-through">R$ {p.oldPrice?.toFixed(2)}</span>
                           )}
                         </div>
-                        <div className="p-2 space-y-1">
-                          <p className="text-[11px] text-gray-500 font-medium uppercase truncate">{p.store}</p>
-                          <p className="text-xs font-semibold line-clamp-2 leading-tight">{p.name}</p>
-                          <div className="flex items-baseline gap-1">
-                            <span className="text-sm font-bold text-[#1a1a1a]">R$ {p.price?.toFixed(2)}</span>
-                            {p.oldPrice > 0 && (
-                              <span className="text-[10px] text-gray-400 line-through">R$ {p.oldPrice?.toFixed(2)}</span>
-                            )}
-                          </div>
-                          {p.freeShipping && (
-                            <span className="text-[10px] text-green-600 font-medium">Frete Grátis</span>
-                          )}
-                        </div>
-                      </a>
+                        {p.freeShipping && (
+                          <span className="block text-[11px] text-green-600 font-medium">Frete Grátis</span>
+                        )}
+                        {p.rating && (
+                          <span className="block text-[11px] text-gray-500">★ {p.rating}/5{p.totalSales ? ` · ${p.totalSales} vendidos` : ''}</span>
+                        )}
+                        {p.sellerName && (
+                          <span className="block text-[11px] text-gray-400">{p.sellerName}</span>
+                        )}
+                        <a
+                          href={p.productUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-block mt-1 px-4 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg hover:bg-gray-800 transition-colors"
+                        >
+                          Comprar
+                        </a>
+                      </div>
                     </div>
+                    {p.description && p.description !== p.name && (
+                      <p className="text-xs text-gray-500 leading-relaxed line-clamp-3">{p.description}</p>
+                    )}
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
           )}
         </div>

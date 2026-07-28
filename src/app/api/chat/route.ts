@@ -37,11 +37,18 @@ REGRAS:
 - Se não encontrar produtos relevantes, avise honestamente
 
 ANÁLISE OBRIGATÓRIA DE REQUISITOS:
-Sempre que receber produtos, analise cada um contra os requisitos do usuário.
-Exemplo: usuário pediu "PC que roda GTA 5 no Ultra, até R$ 5000"
-- PC #1: RTX 3060 + R$ 4500 → ATENDE (roda GTA Ultra, dentro do orçamento) ✓
-- PC #2: GTX 1650 + R$ 3200 → NÃO ATENDE (não roda GTA Ultra) ✗
-- PC #3: RTX 4070 + R$ 8000 → NÃO ATENDE (acima do orçamento) ✗`
+Você receberá MUITOS produtos (até 100). Analise todos, mas na resposta:
+- Mostre apenas os TOP 5-10 melhores produtos que atendem os requisitos
+- Para cada produto aprovado, escreva o NOME DO PRODUTO em negrito, depois uma breve análise de por que ele atende
+- Se menos de 5 produtos atenderem, mostre apenas os que atendem
+- Se NENHUM atender, avise honestamente e mostre os 3 mais próximos
+
+Exemplo de formato para CADA produto aprovado:
+**RTX 3060 12GB - Kabum**
+Preço: de R$ 2.499 por R$ 1.999 (-20% OFF)
+🎯 Atende porque: tem RTX 3060 que roda GTA 5 no Ultra, frete grátis, dentro do orçamento
+
+Faça uma análise sincera. Não invente informações. Use APENAS os dados recebidos.`
 
 async function callAi(messages: { role: string; content: string }[], systemPrompt: string): Promise<string | null> {
   const cf = await chatWithCloudflare(messages, systemPrompt)
@@ -104,7 +111,7 @@ export async function POST(request: NextRequest) {
       console.log(`[Chat] Query extraída: "${extractedParams?.productName}" | Buscando: "${searchQuery}"`)
 
       scrapedProducts = await searchProducts(searchQuery)
-      scrapedProducts = scrapedProducts.slice(0, 25)
+      scrapedProducts = scrapedProducts.slice(0, 100)
 
       productList = scrapedProducts.map((p, i) => {
         const discount = p.oldPrice && p.oldPrice > p.price
@@ -149,27 +156,23 @@ export async function POST(request: NextRequest) {
         : ''
 
       const productContext = productList.map(p =>
-        `PRODUTO ${p.index}: "${p.name}"
-Loja: ${p.store}
-Preço atual: R$ ${p.price.toFixed(2)}
-Preço original: R$ ${p.oldPrice.toFixed(2)}
-Desconto: ${p.discountPercent}% OFF${p.freeShipping ? ' | Frete Grátis' : ''}${p.sellerName ? ` | Vendedor: ${p.sellerName}` : ''}${p.rating ? ` | Avaliação: ${p.rating}/5` : ''}${p.totalSales ? ` | Vendas: ${p.totalSales}` : ''}
-Link: ${p.productUrl}`
-      ).join('\n\n')
+        `P${p.index} | ${p.name} | ${p.store} | R$ ${p.price.toFixed(2)}${p.oldPrice > 0 ? ` de R$ ${p.oldPrice.toFixed(2)} (-${p.discountPercent}%)` : ''}${p.freeShipping ? ' | Frete Grátis' : ''}${p.rating ? ` | ${p.rating}/5` : ''}${p.sellerName ? ` | ${p.sellerName}` : ''} | ${p.productUrl}`
+      ).join('\n')
 
       const messages = history || []
       messages.push({
         role: 'user',
         content: `O usuário perguntou: "${message}"${requirements}
 
-Aqui estão OS PRODUTOS REAIS encontrados nas lojas parceiras:
+Aqui estão TODOS os ${productList.length} produtos REAIS encontrados:
 
 ${productContext}
 
-Analise CADA produto e me diga:
-1. Quais produtos REALMENTE atendem os requisitos do usuário?
-2. Qual o melhor custo-benefício?
-3. Para cada produto aprovado, explique por que ele atende.`
+Analise todos esses produtos. Na sua resposta:
+1. Mostre APENAS os melhores (top 5-10) que REALMENTE atendem os requisitos
+2. Para cada um, escreva o NOME em negrito, preço, desconto, e explique POR QUE atende
+3. Se nenhum atender completamente, mostre os mais próximos e avise
+4. Seja direto e útil - o usuário quer economizar`
       })
 
       const response = await callAi(messages, SYSTEM_PROMPT) || 'Desculpe, não consegui processar sua solicitação no momento. Tente novamente mais tarde.'
