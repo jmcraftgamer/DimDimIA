@@ -17,8 +17,10 @@ export default function InicioPage() {
   }, [])
 
   return (
-    <div>
-      <ChatBox embedded />
+    <div className="min-h-screen flex flex-col overflow-hidden">
+      <div className="flex-1 overflow-hidden flex flex-col">
+        <ChatBox embedded />
+      </div>
 
       <section className="max-w-6xl mx-auto px-4 py-12">
         <h2 className="text-2xl font-bold text-[#1a1a1a] mb-2">
