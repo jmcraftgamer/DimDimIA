@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { ChatMessage, PRESET_QUERIES } from '../types'
 import ChatLoading from './ChatLoading'
 
@@ -10,6 +10,8 @@ interface ChatBoxProps {
 
 interface MessageWithProducts extends ChatMessage {
   products?: any[]
+  liked?: boolean
+  hidden?: boolean
 }
 
 function WalletAvatar() {
@@ -67,11 +69,75 @@ function renderLine(trimmed: string, i: number) {
   return <p className="text-sm leading-relaxed">{trimmed}</p>
 }
 
+function MicIcon({ isRecording }: { isRecording: boolean }) {
+  if (isRecording) {
+    return (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <rect x="6" y="6" width="12" height="12" rx="2" strokeWidth={2} />
+      </svg>
+    )
+  }
+  return (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+    </svg>
+  )
+}
+
+function CopyIcon() {
+  return (
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+    </svg>
+  )
+}
+
+function ThumbsUpIcon({ filled }: { filled?: boolean }) {
+  if (filled) {
+    return (
+      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3zM7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" />
+      </svg>
+    )
+  }
+  return (
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3zM7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" />
+    </svg>
+  )
+}
+
+function EyeOffIcon() {
+  return (
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+    </svg>
+  )
+}
+
+function RefreshIcon() {
+  return (
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+    </svg>
+  )
+}
+
+function DotsIcon() {
+  return (
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01" />
+    </svg>
+  )
+}
+
 export default function ChatBox({ embedded }: ChatBoxProps) {
   const [messages, setMessages] = useState<MessageWithProducts[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [loadingPhase, setLoadingPhase] = useState<'thinking' | 'searching' | 'evaluating'>('thinking')
+  const [isRecording, setIsRecording] = useState(false)
+  const recognitionRef = useRef<any>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -87,12 +153,13 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
     scrollToBottom()
   }, [messages])
 
-  const handleSend = async () => {
-    if (!input.trim() || loading) return
+  const handleSend = useCallback(async (customMessage?: string) => {
+    const msg = customMessage ?? input
+    if (!msg.trim() || loading) return
 
     const userMessage: MessageWithProducts = {
       id: Date.now().toString(),
-      content: input,
+      content: msg,
       role: 'user',
       createdAt: new Date().toISOString(),
     }
@@ -107,7 +174,7 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: input,
+          message: msg,
           history: messages.map((m) => ({ role: m.role, content: m.content })),
         }),
       })
@@ -136,7 +203,7 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [input, loading, messages])
 
   async function handleSSEResponse(res: Response) {
     const reader = res.body?.getReader()
@@ -170,7 +237,6 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
           const parsed = JSON.parse(eventData)
           if (eventType === 'status') {
             setLoadingPhase(parsed.phase)
-          } else if (eventType === 'product_count') {
           } else if (eventType === 'result') {
             resultData = parsed
           }
@@ -181,6 +247,8 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
     if (resultData) {
       const assistantMessage: MessageWithProducts = {
         id: (Date.now() + 1).toString(),
+        liked: false,
+        hidden: false,
         content: resultData.response || 'Desculpe, não consegui processar sua solicitação.',
         role: 'assistant',
         createdAt: new Date().toISOString(),
@@ -192,7 +260,7 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
 
   const handlePresetClick = (query: string) => {
     setInput(query)
-    setTimeout(() => handleSend(), 100)
+    setTimeout(() => handleSend(query), 100)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -218,6 +286,12 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
   }
 
   const startVoiceInput = () => {
+    if (isRecording) {
+      recognitionRef.current?.stop()
+      setIsRecording(false)
+      return
+    }
+
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
       setMessages((prev) => [
         ...prev,
@@ -234,11 +308,30 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     const recognition = new SpeechRecognition()
     recognition.lang = 'pt-BR'
+    recognition.continuous = true
+    recognition.interimResults = true
+
     recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript
-      setInput(transcript)
+      let final = ''
+      let interim = ''
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript
+        if (event.results[i].isFinal) {
+          final += transcript
+        } else {
+          interim += transcript
+        }
+      }
+      setInput(final + interim)
     }
+
+    recognition.onend = () => {
+      setIsRecording(false)
+    }
+
+    recognitionRef.current = recognition
     recognition.start()
+    setIsRecording(true)
   }
 
   const autoResize = () => {
@@ -248,6 +341,70 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
       el.style.height = el.scrollHeight + 'px'
     }
   }
+
+  const copyMessage = async (content: string) => {
+    try {
+      await navigator.clipboard.writeText(content)
+    } catch { }
+  }
+
+  const toggleLike = (msgId: string) => {
+    setMessages((prev) => prev.map(m => m.id === msgId ? { ...m, liked: !m.liked } : m))
+  }
+
+  const toggleHide = (msgId: string) => {
+    setMessages((prev) => prev.map(m => m.id === msgId ? { ...m, hidden: !m.hidden } : m))
+  }
+
+  const regenerateLast = () => {
+    const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')
+    if (lastUserMsg) {
+      const msgsToKeep = messages.slice(0, messages.indexOf(lastUserMsg))
+      setMessages(msgsToKeep)
+      setInput(lastUserMsg.content)
+      setTimeout(() => handleSend(lastUserMsg.content), 100)
+    }
+  }
+
+  const renderMessageActions = (msg: MessageWithProducts) => (
+    <div className="flex items-center gap-1 mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+      <button
+        onClick={() => copyMessage(msg.content)}
+        className="p-1.5 rounded-md hover:bg-[#f0f0f0] text-gray-400 hover:text-gray-600 transition-colors"
+        title="Copiar resposta"
+      >
+        <CopyIcon />
+      </button>
+      <button
+        onClick={regenerateLast}
+        className="p-1.5 rounded-md hover:bg-[#f0f0f0] text-gray-400 hover:text-gray-600 transition-colors"
+        title="Refazer resposta"
+      >
+        <RefreshIcon />
+      </button>
+      <button
+        onClick={() => toggleLike(msg.id)}
+        className={`p-1.5 rounded-md hover:bg-[#f0f0f0] transition-colors ${msg.liked ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600'}`}
+        title={msg.liked ? 'Não gostei' : 'Gostei'}
+      >
+        <ThumbsUpIcon filled={msg.liked} />
+      </button>
+      <button
+        onClick={() => toggleHide(msg.id)}
+        className="p-1.5 rounded-md hover:bg-[#f0f0f0] text-gray-400 hover:text-gray-600 transition-colors"
+        title="Ocultar resposta"
+      >
+        <EyeOffIcon />
+      </button>
+      <button
+        onClick={() => copyMessage(msg.content)}
+        className="p-1.5 rounded-md hover:bg-[#f0f0f0] text-gray-400 hover:text-gray-600 transition-colors"
+        title="Mais opções"
+      >
+        <DotsIcon />
+      </button>
+    </div>
+  )
 
   const initialInput = !hasMessages && (
     <div className="w-full max-w-3xl mx-auto">
@@ -283,16 +440,14 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
             </button>
             <button
               onClick={startVoiceInput}
-              className="p-2 rounded-xl hover:bg-[#f5f5f5] transition-colors text-gray-400 hover:text-gray-600"
-              title="Ditado por voz"
+              className={`p-2 rounded-xl transition-colors ${isRecording ? 'bg-red-100 text-red-500 animate-pulse' : 'hover:bg-[#f5f5f5] text-gray-400 hover:text-gray-600'}`}
+              title={isRecording ? 'Parar gravação' : 'Ditado por voz'}
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-              </svg>
+              <MicIcon isRecording={isRecording} />
             </button>
           </div>
           <button
-            onClick={handleSend}
+            onClick={() => handleSend()}
             disabled={!input.trim() || loading}
             className="px-5 py-2.5 rounded-xl bg-[#1a1a1a] text-white text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
@@ -304,6 +459,12 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
         <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFileUpload(e, 'image')} />
         <input ref={fileInputRef} type="file" className="hidden" onChange={(e) => handleFileUpload(e, 'file')} />
       </div>
+      {isRecording && (
+        <div className="flex items-center justify-center gap-2 mt-3 text-red-500 text-sm font-medium">
+          <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+          Gravando... fale agora
+        </div>
+      )}
     </div>
   )
 
@@ -323,8 +484,8 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
 
   const chatMessages = hasMessages && (
     <div className="flex-1 overflow-y-auto space-y-3 px-4 py-6 max-w-3xl mx-auto w-full">
-      {messages.map((msg) => (
-        <div key={msg.id} className={`fade-in flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+      {messages.filter(m => !m.hidden).map((msg) => (
+        <div key={msg.id} className={`fade-in flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
           <div className={`flex items-start gap-2 max-w-[88%] ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
             {msg.role === 'assistant' && <WalletAvatar />}
             <div
@@ -343,7 +504,7 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
           </div>
 
           {msg.role === 'assistant' && msg.products && msg.products.length > 0 && (
-            <div className="pl-11 mt-2 space-y-3">
+            <div className="pl-11 mt-2 space-y-3 w-full max-w-[88%]">
               {msg.products.slice(0, 10).map((p, i) => (
                 <div key={i} className="bg-white rounded-xl border border-[#e5e5e5] overflow-hidden hover:shadow-md transition-shadow">
                   <div className="p-3 space-y-3">
@@ -396,6 +557,12 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
               ))}
             </div>
           )}
+
+          {msg.role === 'assistant' && (
+            <div className="pl-11 group">
+              {renderMessageActions(msg)}
+            </div>
+          )}
         </div>
       ))}
 
@@ -437,23 +604,21 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Pergunte sobre qualquer produto..."
+            placeholder={isRecording ? 'Fale agora...' : 'Pergunte sobre qualquer produto...'}
             className="flex-1 bg-transparent border-0 outline-none resize-none text-sm py-2 max-h-32 placeholder:text-gray-400"
             rows={1}
           />
 
           <button
             onClick={startVoiceInput}
-            className="p-2 rounded-xl hover:bg-[#e5e5e5] transition-colors text-gray-500 shrink-0"
-            title="Ditado por voz"
+            className={`p-2 rounded-xl transition-colors ${isRecording ? 'bg-red-100 text-red-500' : 'hover:bg-[#e5e5e5] text-gray-500'}`}
+            title={isRecording ? 'Parar gravação' : 'Ditado por voz'}
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-            </svg>
+            <MicIcon isRecording={isRecording} />
           </button>
 
           <button
-            onClick={handleSend}
+            onClick={() => handleSend()}
             disabled={!input.trim() || loading}
             className="p-2.5 rounded-xl bg-[#1a1a1a] text-white hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
             title="Enviar"
@@ -463,6 +628,12 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
             </svg>
           </button>
         </div>
+        {isRecording && (
+          <div className="flex items-center justify-center gap-2 mt-2 text-red-500 text-xs font-medium">
+            <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+            Gravando... fale agora
+          </div>
+        )}
       </div>
     </div>
   )
