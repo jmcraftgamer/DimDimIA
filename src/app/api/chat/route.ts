@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { chatWithModel, MODELS } from '../../../lib/openhauter'
 import { searchProducts } from '../../../lib/scrapers'
+import { chatWithCloudflare } from '../../../lib/cloudflare-ai'
+import { checkAiRateLimit, AI_LIMIT_MESSAGE } from '../../../lib/rate-limit'
+import { chatWithModel, MODELS } from '../../../lib/openhauter'
 import prisma from '../../../lib/prisma'
 
 const SYSTEM_PROMPT = `Você é a DimDimIA, uma assistente ESPECIALIZADA em encontrar as MELHORES promoções e descontos em lojas brasileiras.
@@ -33,6 +35,12 @@ REGRAS:
 - Se não encontrar produtos relevantes, avise honestamente
 - Se o usuário pedir algo que não seja produto, converse normalmente`
 
+async function callAi(messages: { role: string; content: string }[], systemPrompt: string): Promise<string | null> {
+  const cf = await chatWithCloudflare(messages, systemPrompt)
+  if (cf) return cf
+  return chatWithModel(MODELS.CHAT_ASSISTANT, messages, systemPrompt)
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession()
@@ -59,28 +67,15 @@ export async function POST(request: NextRequest) {
       lowercaseMsg.includes('dica') || lowercaseMsg.includes('qual') ||
       lowercaseMsg.includes('onde')
 
+    let scrapedProducts: any[] = []
+    let productList: any[] = []
+
     if (isProductRequest) {
       console.log(`[Chat] Buscando produtos para: "${message}"`)
-      const rawProducts = await searchProducts(message)
-      const scrapedProducts = rawProducts.slice(0, 10)
+      scrapedProducts = await searchProducts(message)
+      scrapedProducts = scrapedProducts.slice(0, 10)
 
-      if (scrapedProducts.length === 0) {
-        const messages = history || []
-        messages.push({ role: 'user', content: message })
-        const response = await chatWithModel(MODELS.CHAT_ASSISTANT, messages, SYSTEM_PROMPT)
-
-        if (session?.user?.email) {
-          const user = await prisma.user.findUnique({ where: { email: session.user.email } })
-          if (user) {
-            await prisma.chatMessage.create({ data: { content: message, role: 'user', userId: user.id } })
-            await prisma.chatMessage.create({ data: { content: response, role: 'assistant', userId: user.id } })
-          }
-        }
-
-        return NextResponse.json({ response, products: [] })
-      }
-
-      const productList = scrapedProducts.map((p, i) => {
+      productList = scrapedProducts.map((p, i) => {
         const discount = p.oldPrice && p.oldPrice > p.price
           ? Math.round((1 - p.price / p.oldPrice) * 100)
           : 0
@@ -100,7 +95,25 @@ export async function POST(request: NextRequest) {
           description: p.description || p.name,
         }
       })
+    }
 
+    if (session?.user?.email) {
+      const user = await prisma.user.findUnique({ where: { email: session.user.email } })
+      if (user) {
+        const rateLimit = await checkAiRateLimit(user.id)
+        if (!rateLimit.allowed) {
+          await prisma.chatMessage.create({ data: { content: message, role: 'user', userId: user.id } })
+
+          if (productList.length > 0) {
+            return NextResponse.json({ response: AI_LIMIT_MESSAGE, products: productList })
+          }
+
+          return NextResponse.json({ response: AI_LIMIT_MESSAGE, products: [] })
+        }
+      }
+    }
+
+    if (productList.length > 0) {
       const productContext = productList.map(p =>
         `PRODUTO ${p.index}: "${p.name}"
 Loja: ${p.store}
@@ -122,7 +135,7 @@ ${productContext}
 Com base nesses dados REAIS, analise e responda ao usuário. Destaque os melhores descontos, compare entre lojas, e dê sua recomendação.`
       })
 
-      const response = await chatWithModel('google/gemini-2.0-flash-001', messages, SYSTEM_PROMPT)
+      const response = await callAi(messages, SYSTEM_PROMPT) || 'Desculpe, não consegui processar sua solicitação no momento. Tente novamente mais tarde.'
 
       if (session?.user?.email) {
         const user = await prisma.user.findUnique({ where: { email: session.user.email } })
@@ -135,9 +148,25 @@ Com base nesses dados REAIS, analise e responda ao usuário. Destaque os melhore
       return NextResponse.json({ response, products: productList })
     }
 
+    if (isProductRequest && scrapedProducts.length === 0) {
+      const messages = history || []
+      messages.push({ role: 'user', content: message })
+      const response = await callAi(messages, SYSTEM_PROMPT) || 'Desculpe, não consegui processar sua solicitação no momento. Tente novamente mais tarde.'
+
+      if (session?.user?.email) {
+        const user = await prisma.user.findUnique({ where: { email: session.user.email } })
+        if (user) {
+          await prisma.chatMessage.create({ data: { content: message, role: 'user', userId: user.id } })
+          await prisma.chatMessage.create({ data: { content: response, role: 'assistant', userId: user.id } })
+        }
+      }
+
+      return NextResponse.json({ response, products: [] })
+    }
+
     const messages = history || []
     messages.push({ role: 'user', content: message })
-    const response = await chatWithModel('google/gemini-2.0-flash-001', messages, SYSTEM_PROMPT)
+    const response = await callAi(messages, SYSTEM_PROMPT) || 'Desculpe, não consegui processar sua solicitação no momento. Tente novamente mais tarde.'
 
     if (session?.user?.email) {
       const user = await prisma.user.findUnique({ where: { email: session.user.email } })

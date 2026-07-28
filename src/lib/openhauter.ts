@@ -49,7 +49,7 @@ export async function chatWithModel(
   } catch (error: any) {
     const errData = error?.response?.data as OpenHauterError | undefined
     console.error('OpenRouter API error:', errData?.error?.message || error.message)
-    throw new Error('Erro ao comunicar com a IA')
+    return ''
   }
 }
 

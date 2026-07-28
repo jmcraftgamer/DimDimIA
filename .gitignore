@@ -6,4 +6,5 @@ node_modules/
 .env.local
 .env.production
 ChavesApis.txt
+Temp/
 npm-dev.log
