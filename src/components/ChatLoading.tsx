@@ -6,19 +6,20 @@ interface ChatLoadingProps {
   phase: 'thinking' | 'searching' | 'evaluating'
 }
 
-function WalletIcon() {
+function BanknoteLoadingIcon() {
   return (
     <div className="relative w-16 h-16">
-      <svg viewBox="0 0 64 64" fill="none" className="w-full h-full drop-shadow-lg">
-        <rect x="4" y="14" width="56" height="40" rx="6" fill="#1a1a1a" />
-        <rect x="8" y="18" width="48" height="32" rx="4" fill="#2d2d2d" />
-        <rect x="20" y="28" width="24" height="12" rx="3" fill="#f5c518" />
-        <rect x="22" y="30" width="20" height="2" rx="1" fill="#d4a017" />
-        <rect x="22" y="34" width="12" height="2" rx="1" fill="#d4a017" />
-        <circle cx="44" cy="22" r="3" fill="#f5c518" />
-        <circle cx="44" cy="22" r="1.5" fill="#1a1a1a" />
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
+        <rect x="2" y="5" width="20" height="14" rx="2" />
+        <path d="M2 9c2 0 3-1.5 3-3.5" />
+        <path d="M22 9c-2 0-3-1.5-3-3.5" />
+        <path d="M2 15c2 0 3 1.5 3 3.5" />
+        <path d="M22 15c-2 0-3 1.5-3 3.5" />
+        <circle cx="12" cy="12" r="2.5" />
+        <path d="M12 7.5v9" />
+        <path d="M13.5 9.5h-2.5a1.5 1.5 0 0 0 0 3h3a1.5 1.5 0 0 1 0 3h-3" />
       </svg>
-      <div className="absolute -top-2 -right-2 w-5 h-5 bg-green-500 rounded-full border-2 border-white shadow" />
+      <div className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full border-2 border-white shadow" />
     </div>
   )
 }
@@ -73,7 +74,7 @@ export default function ChatLoading({ phase }: ChatLoadingProps) {
     <div className="fade-in flex justify-start mb-4">
       <div className="flex items-start gap-3">
         <div className="relative">
-          <WalletIcon />
+          <BanknoteLoadingIcon />
           {phase === 'searching' && <FlyingNotes />}
         </div>
         <div className="bg-transparent rounded-2xl rounded-bl-md px-4 py-3">

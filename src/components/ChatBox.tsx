@@ -14,20 +14,19 @@ interface MessageWithProducts extends ChatMessage {
   hidden?: boolean
 }
 
-function WalletAvatar() {
+function BanknoteIcon({ size = 'sm' }: { size?: 'sm' | 'md' }) {
+  const cls = size === 'sm' ? 'w-9 h-9' : 'w-20 h-20'
   return (
-    <div className="relative w-9 h-9 shrink-0">
-      <svg viewBox="0 0 48 48" fill="none" className="w-full h-full drop-shadow-sm">
-        <rect x="4" y="10" width="40" height="28" rx="5" fill="#1a1a1a" />
-        <rect x="2" y="12" width="44" height="4" rx="2" fill="#2d2d2d" />
-        <rect x="34" y="20" width="10" height="8" rx="2" fill="#f5c518" />
-        <rect x="36" y="22" width="6" height="1.5" rx="0.75" fill="#d4a017" />
-        <rect x="36" y="25" width="4" height="1.5" rx="0.75" fill="#d4a017" />
-        <line x1="10" y1="26" x2="26" y2="26" stroke="#444" strokeWidth="1.5" strokeLinecap="round" />
-        <line x1="10" y1="30" x2="22" y2="30" stroke="#444" strokeWidth="1.5" strokeLinecap="round" />
-      </svg>
-      <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white" />
-    </div>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={`${cls} shrink-0`}>
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <path d="M2 9c2 0 3-1.5 3-3.5" />
+      <path d="M22 9c-2 0-3-1.5-3-3.5" />
+      <path d="M2 15c2 0 3 1.5 3 3.5" />
+      <path d="M22 15c-2 0-3 1.5-3 3.5" />
+      <circle cx="12" cy="12" r="2.5" />
+      <path d="M12 7.5v9" />
+      <path d="M13.5 9.5h-2.5a1.5 1.5 0 0 0 0 3h3a1.5 1.5 0 0 1 0 3h-3" />
+    </svg>
   )
 }
 
@@ -37,7 +36,7 @@ function FlyingNotesBg({ count = 3 }: { count?: number }) {
       {[...Array(count)].map((_, i) => (
         <div
           key={i}
-          className="absolute text-yellow-400 text-sm animate-float-note"
+          className="absolute text-yellow-500 text-base animate-float-note"
           style={{
             left: `${20 + Math.random() * 60}%`,
             top: '50%',
@@ -148,6 +147,7 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
   const [loading, setLoading] = useState(false)
   const [loadingPhase, setLoadingPhase] = useState<'thinking' | 'searching' | 'evaluating'>('thinking')
   const [isRecording, setIsRecording] = useState(false)
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set())
   const recognitionRef = useRef<any>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -158,11 +158,16 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
   const hasMessages = messages.length > 0
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+    }
   }
 
   useEffect(() => {
-    scrollToBottom()
+    if (messages.length > 0) {
+      const raf = requestAnimationFrame(() => scrollToBottom())
+      return () => cancelAnimationFrame(raf)
+    }
   }, [messages])
 
   const handleSend = useCallback(async (customMessage?: string) => {
@@ -421,13 +426,13 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
   )
 
   const chatMessages = hasMessages && (
-    <div ref={messagesContainerRef} className="flex-1 overflow-y-auto space-y-3 px-4 py-6 max-w-3xl mx-auto w-full">
+    <div ref={messagesContainerRef} className="flex-1 overflow-y-auto space-y-3 px-4 py-6 max-w-3xl mx-auto w-full scrollbar-hide">
       {messages.filter(m => !m.hidden).map((msg) => (
         <div key={msg.id} className={`fade-in flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
           <div className={`flex items-start gap-2 max-w-[88%] ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
             {msg.role === 'assistant' && (
               <div className="relative shrink-0">
-                <WalletAvatar />
+                <BanknoteIcon size="sm" />
                 <FlyingNotesBg count={2} />
               </div>
             )}
@@ -437,33 +442,57 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
           </div>
 
           {msg.role === 'assistant' && msg.products && msg.products.length > 0 && (
-            <div className="pl-[44px] mt-2 space-y-3 w-full max-w-[88%]">
-              {msg.products.slice(0, 10).map((p, i) => (
-                <div key={i} className="bg-white rounded-xl border border-[#e5e5e5] overflow-hidden hover:shadow-md transition-shadow">
-                  <div className="p-3 space-y-3">
-                    <h3 className="font-bold text-sm leading-tight text-[#1a1a1a] line-clamp-2">{p.name}</h3>
-                    <div className="flex gap-3">
-                      <div className="relative w-24 h-24 bg-gray-50 rounded-lg flex items-center justify-center shrink-0 border border-gray-100">
-                        <img src={p.imageUrl || 'https://via.placeholder.com/150'} alt={p.name} className="max-h-full max-w-full object-contain p-1" onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150' }} />
+            <div className="pl-[44px] mt-2 space-y-4 w-full max-w-[88%]">
+              {msg.products.slice(0, 10).map((p, i) => {
+                const showFallback = failedImages.has(p.productUrl || p.name + i)
+                return (
+                  <div key={i} className="bg-white rounded-xl border border-[#e5e5e5] overflow-hidden hover:shadow-md transition-shadow product-card">
+                    <div className="p-4 space-y-3">
+                      <h3 className="font-bold text-base leading-tight text-[#1a1a1a]">{p.name}</h3>
+
+                      <div className="relative w-full h-48 bg-gray-50 rounded-lg overflow-hidden border border-gray-100">
+                        {!showFallback && p.imageUrl ? (
+                          <img
+                            src={p.imageUrl}
+                            alt={p.name}
+                            className="w-full h-full object-contain p-3"
+                            onError={() => setFailedImages(prev => new Set(prev).add(p.productUrl || p.name + i))}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <svg className="w-12 h-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <rect x="3" y="5" width="18" height="14" rx="2" strokeWidth="1" />
+                              <circle cx="12" cy="12" r="4" strokeWidth="1" />
+                            </svg>
+                          </div>
+                        )}
                         {p.discountPercent > 0 && (
-                          <span className="absolute top-0 left-0 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-br-lg">-{p.discountPercent}%</span>
+                          <span className="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-md">-{p.discountPercent}%</span>
+                        )}
+                        {p.freeShipping && (
+                          <span className="absolute top-2 right-2 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-md">Frete Grátis</span>
                         )}
                       </div>
-                      <div className="flex-1 min-w-0 space-y-1.5">
-                        <p className="text-[11px] text-gray-500 font-medium uppercase">{p.store}</p>
-                        <div className="flex items-baseline gap-1.5 flex-wrap">
-                          <span className="text-base font-bold text-[#1a1a1a]">R$ {p.price?.toFixed(2)}</span>
-                          {p.oldPrice > 0 && <span className="text-xs text-gray-400 line-through">R$ {p.oldPrice?.toFixed(2)}</span>}
+
+                      {p.description && p.description !== p.name && (
+                        <p className="text-sm text-gray-600 leading-relaxed">{p.description}</p>
+                      )}
+
+                      <div className="flex items-center justify-between pt-1">
+                        <div className="space-y-0.5">
+                          <p className="text-[11px] text-gray-500 font-medium uppercase">{p.store}</p>
+                          <div className="flex items-baseline gap-1.5 flex-wrap">
+                            <span className="text-lg font-bold text-[#1a1a1a]">R$ {p.price?.toFixed(2)}</span>
+                            {p.oldPrice > 0 && <span className="text-sm text-gray-400 line-through">R$ {p.oldPrice?.toFixed(2)}</span>}
+                          </div>
+                          {p.rating && <span className="block text-[11px] text-gray-500">★ {p.rating}/5{p.totalSales ? ` · ${p.totalSales} vendidos` : ''}</span>}
                         </div>
-                        {p.freeShipping && <span className="block text-[11px] text-green-600 font-medium">Frete Grátis</span>}
-                        {p.rating && <span className="block text-[11px] text-gray-500">★ {p.rating}/5{p.totalSales ? ` · ${p.totalSales} vendidos` : ''}</span>}
-                        <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="inline-block mt-1 px-4 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg hover:bg-gray-800 transition-colors text-center">Comprar</a>
+                        <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="px-5 py-2 bg-[#1a1a1a] text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors text-center">Comprar</a>
                       </div>
                     </div>
-                    {p.description && p.description !== p.name && <p className="text-xs text-gray-500 leading-relaxed line-clamp-2">{p.description}</p>}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
 
@@ -510,18 +539,6 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
     <div className={`flex flex-col ${embedded ? '' : hasMessages ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
       {!hasMessages && (
         <div className={`flex flex-col items-center justify-center px-4 ${embedded ? 'py-12' : 'flex-1 pt-24 pb-12'}`}>
-          <div className="relative w-20 h-20 mb-4">
-            <svg viewBox="0 0 48 48" fill="none" className="w-full h-full drop-shadow-md">
-              <rect x="4" y="10" width="40" height="28" rx="5" fill="#1a1a1a" />
-              <rect x="2" y="12" width="44" height="4" rx="2" fill="#2d2d2d" />
-              <rect x="34" y="20" width="10" height="8" rx="2" fill="#f5c518" />
-              <rect x="36" y="22" width="6" height="1.5" rx="0.75" fill="#d4a017" />
-              <rect x="36" y="25" width="4" height="1.5" rx="0.75" fill="#d4a017" />
-              <line x1="10" y1="26" x2="26" y2="26" stroke="#444" strokeWidth="1.5" strokeLinecap="round" />
-              <line x1="10" y1="30" x2="22" y2="30" stroke="#444" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-            <FlyingNotesBg count={4} />
-          </div>
           <h1 className="font-display text-5xl md:text-7xl font-black gradient-text mb-1 tracking-tight">DimDimIA</h1>
           <p className="text-gray-500 text-lg md:text-xl font-light mb-8">As Melhores Promoções da Net</p>
           {initialInput}
