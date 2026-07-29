@@ -15,15 +15,11 @@ interface MessageWithProducts extends ChatMessage {
 }
 
 function BanknoteIcon({ size = 'sm' }: { size?: 'sm' | 'md' }) {
-  const cls = size === 'sm' ? 'w-7 h-7' : 'w-16 h-16'
+  const cls = size === 'sm' ? 'w-5 h-5' : 'w-12 h-12'
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={`${cls} shrink-0`}>
-      <rect x="2" y="5" width="20" height="14" rx="2" />
-      <path d="M2 9c2 0 3-1.5 3-3.5" />
-      <path d="M22 9c-2 0-3-1.5-3-3.5" />
-      <path d="M2 15c2 0 3 1.5 3 3.5" />
-      <path d="M22 15c-2 0-3 1.5-3 3.5" />
-      <text x="12" y="12" textAnchor="middle" dy=".35em" fontSize="12" fontWeight="bold" fill="currentColor" stroke="none">$</text>
+      <rect x="3" y="6" width="18" height="12" rx="2" />
+      <text x="12" y="12" textAnchor="middle" dy=".35em" fontSize="9" fontWeight="bold" fill="currentColor" stroke="none">$</text>
     </svg>
   )
 }
@@ -408,7 +404,7 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
         <div key={msg.id} className={`fade-in flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
           <div className={`flex items-start gap-2 max-w-[88%] ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
             {msg.role === 'assistant' && (
-              <div className="relative shrink-0 text-gray-400">
+              <div className="relative shrink-0 text-gray-400" style={{ transform: 'rotate(-8deg)' }}>
                 <BanknoteIcon size="sm" />
               </div>
             )}
