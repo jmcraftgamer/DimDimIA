@@ -216,7 +216,11 @@ Analise todos. Mostre APENAS os TOP 5-10 melhores que atendem. Para cada um: nom
         }
       }
 
-      const body = { response, products: productList }
+      const mentionedIndices = extractProductIndices(response)
+      const matchedProducts = mentionedIndices.length > 0
+        ? productList.filter(p => mentionedIndices.includes(p.index))
+        : []
+      const body = { response, products: matchedProducts.length > 0 ? matchedProducts : productList.slice(0, 10) }
       if (isStream) return streamResponse([{ event: 'result', data: body }, { event: 'done', data: {} }])
       return NextResponse.json(body)
     }
@@ -311,6 +315,11 @@ Analise todos. Mostre APENAS os TOP 5-10 melhores que atendem os requisitos. Par
 
   const response = await callAi(msgs, SYSTEM_PROMPT) || 'Desculpe, não consegui processar sua solicitação no momento.'
 
+  const mentionedIndices = extractProductIndices(response)
+  const matchedProducts = mentionedIndices.length > 0
+    ? productList.filter(p => mentionedIndices.includes(p.index))
+    : []
+
   if (session?.user?.email) {
     const user = await prisma.user.findUnique({ where: { email: session.user.email } })
     if (user) {
@@ -319,7 +328,7 @@ Analise todos. Mostre APENAS os TOP 5-10 melhores que atendem os requisitos. Par
     }
   }
 
-  send('result', { response, products: productList.slice(0, 20) })
+  send('result', { response, products: matchedProducts.length > 0 ? matchedProducts : productList.slice(0, 10) })
 }
 
 function streamResponse(events: { event: string; data: any }[]) {
@@ -335,4 +344,14 @@ function streamResponse(events: { event: string; data: any }[]) {
 
 function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function extractProductIndices(response: string): number[] {
+  const indices = new Set<number>()
+  const regex = /\[P(\d+)\]/g
+  let match
+  while ((match = regex.exec(response)) !== null) {
+    indices.add(parseInt(match[1], 10))
+  }
+  return Array.from(indices).sort((a, b) => a - b)
 }
