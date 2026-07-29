@@ -53,73 +53,62 @@ function renderLine(trimmed: string) {
   return <p className="text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: renderInline(trimmed) }} />
 }
 
-function findProductByName(name: string, products: any[]): any | null {
-  const clean = name.replace(/\s*-\s*.*$/, '').trim().toLowerCase()
-  return products.find(p => p.name.toLowerCase().includes(clean) || clean.includes(p.name.toLowerCase().split(' ').slice(0, 3).join(' '))) || null
-}
-
 function MessageWithProducts({ content, products }: { content: string; products: any[] }) {
   if (!products?.length) return <TypewriterMessage content={content} />
 
-  const segments: { type: 'text'; content: string }[] = []
-  const parts = content.split(/(\*\*[^*]+\*\*)/g)
+  const productMap: Record<string, string> = {}
+  for (const p of products) {
+    const key = p.name.toLowerCase().trim()
+    productMap[key] = p.productUrl
+  }
 
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i]
-    if (part.startsWith('**') && part.endsWith('**')) {
-      const productName = part.slice(2, -2)
-      const match = findProductByName(productName, products)
-      if (match) {
-        let textBefore = ''
-        if (i > 0) textBefore = parts[i - 1]
-        let textAfter = ''
-        if (i + 1 < parts.length && !parts[i + 1].startsWith('**')) textAfter = parts[i + 1]
-        segments.push({ type: 'text', content: textBefore + '\n' + productName + '\n' + textAfter })
-        segments.push({ type: 'text', content: 'PRODUCT_CARD:' + products.indexOf(match) })
-        if (textAfter) parts[i + 1] = ''
-      }
+  function findUrl(text: string): string | null {
+    const t = text.toLowerCase().trim()
+    for (const [name, url] of Object.entries(productMap)) {
+      if (t.includes(name) || name.includes(t)) return url
     }
+    return null
   }
 
-  if (segments.length === 0) {
-    return <TypewriterMessage content={content} />
-  }
+  const parts = content.split(/(\*\*[^*]+\*\*)/g)
+  const html = parts.map((part) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      const inner = part.slice(2, -2)
+      const url = findUrl(inner)
+      if (url) return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="font-bold underline text-inherit hover:text-gray-600">${inner}</a>`
+      return `<strong>${inner}</strong>`
+    }
+    return part.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  }).join('')
 
   return (
     <div className="space-y-3">
-      {segments.map((seg, idx) => {
-        if (seg.content.startsWith('PRODUCT_CARD:')) {
-          const pIdx = parseInt(seg.content.split(':')[1])
-          const p = products[pIdx]
-          if (!p) return null
-          return (
-            <div key={'card-' + idx} className="bg-white rounded-xl border border-[#e5e5e5] overflow-hidden">
-              <div className="p-4 space-y-3">
-                <h3 className="font-bold text-sm leading-tight text-[#1a1a1a]">{p.name}</h3>
-                <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="block no-underline">
-                  <div className="relative w-full h-40 bg-gray-50 rounded-lg overflow-hidden border border-gray-100">
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <svg className="w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <rect x="3" y="5" width="18" height="14" rx="2" strokeWidth="1" />
-                        <circle cx="12" cy="12" r="4" strokeWidth="1" />
-                      </svg>
-                    </div>
-                    {p.imageUrl?.startsWith('http') && (
-                      <img src={'/api/image-proxy?url=' + encodeURIComponent(p.imageUrl)} alt={p.name} className="absolute inset-0 w-full h-full object-contain p-2" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
-                    )}
+      <div className="text-sm leading-relaxed space-y-0.5" dangerouslySetInnerHTML={{ __html: html }} />
+      <div className="space-y-3">
+        {products.slice(0, 10).map((p, i) => (
+          <div key={i} className="bg-white rounded-xl border border-[#e5e5e5] overflow-hidden">
+            <div className="p-4 space-y-3">
+              <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="no-underline">
+                <h3 className="font-bold text-sm leading-tight text-[#1a1a1a] hover:underline">{p.name}</h3>
+              </a>
+              <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="block no-underline">
+                <div className="relative w-full h-40 bg-gray-50 rounded-lg overflow-hidden border border-gray-100">
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <svg className="w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <rect x="3" y="5" width="18" height="14" rx="2" strokeWidth="1" />
+                      <circle cx="12" cy="12" r="4" strokeWidth="1" />
+                    </svg>
                   </div>
-                </a>
-                <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="block w-full py-2 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg hover:bg-gray-800 transition-colors text-center no-underline">Comprar</a>
-              </div>
+                  {p.imageUrl?.startsWith('http') && (
+                    <img src={'/api/image-proxy?url=' + encodeURIComponent(p.imageUrl)} alt={p.name} className="absolute inset-0 w-full h-full object-contain p-2" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                  )}
+                </div>
+              </a>
+              <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="block w-full py-2 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg hover:bg-gray-800 transition-colors text-center no-underline">Comprar</a>
             </div>
-          )
-        }
-        return (
-          <div key={'text-' + idx}>
-            <TypewriterMessage content={seg.content} />
           </div>
-        )
-      })}
+        ))}
+      </div>
     </div>
   )
 }
