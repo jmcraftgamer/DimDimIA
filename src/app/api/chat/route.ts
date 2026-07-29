@@ -50,7 +50,11 @@ Importante:
 - O nome do produto sempre em negrito com [P#] no final
 - Após o nome, escreva "Descrição detalhada:" com specs e preço
 - NÃO use ##, ###, 🎯, ✅, ❌ ou outros marcadores
-- Se NENHUM produto atender, avise sem inventar`
+- Se NENHUM produto atender, avise sem inventar
+
+No final da sua resposta, adicione UMA LINHA exata com os índices que você usou:
+Índices: P1,P3,P5
+(apenas os números separados por vírgula, sem espaços extras, sem texto antes ou depois)`
 
 function buildProductList(scrapedProducts: any[]) {
   return scrapedProducts.map((p, i) => {
@@ -205,9 +209,9 @@ Total de ${productList.length} produtos reais encontrados:
 
 ${productContext}
 
-Analise todos. Mostre APENAS os TOP 5-10 melhores que atendem. Para cada um: nome em negrito com o índice [P#], preço, desconto, e por que atende.`
+Analise todos. Mostre APENAS os TOP 5-10 melhores que atendem. Para cada um: nome em negrito com o índice [P#]. No final, adicione a linha "Índices: P1,P3,P5" com os números que você usou.`
       })
-
+ 
       const response = await callAi(messages, SYSTEM_PROMPT) || 'Desculpe, não consegui processar sua solicitação no momento. Tente novamente mais tarde.'
 
       if (session?.user?.email) {
@@ -309,7 +313,7 @@ Total de ${productList.length} produtos reais encontrados (mostrando os 200 melh
 
 ${productContext}
 
-Analise todos. Mostre APENAS os TOP 5-10 melhores que atendem os requisitos. Para cada um: nome em negrito com o índice [P#], preço, desconto, e por que atende.`
+Analise todos. Mostre APENAS os TOP 5-10 melhores que atendem os requisitos. Para cada um: nome em negrito com o índice [P#]. No final, adicione a linha "Índices: P1,P3,P5" com os números que você usou.`
   })
 
   const response = await callAi(msgs, SYSTEM_PROMPT) || 'Desculpe, não consegui processar sua solicitação no momento.'
@@ -344,34 +348,27 @@ function sleep(ms: number) {
 
 function extractProductIndices(response: string): number[] {
   const indices = new Set<number>()
-  const regex = /\[P(\d+)\]/g
+
+  const bracketRegex = /\[P(\d+)\]/g
   let match
-  while ((match = regex.exec(response)) !== null) {
+  while ((match = bracketRegex.exec(response)) !== null) {
     indices.add(parseInt(match[1], 10))
   }
+
+  const footerMatch = response.match(/Índices:\s*((?:P\d+[,\s]*)+)/i)
+  if (footerMatch) {
+    const pRegex = /P(\d+)/gi
+    let pMatch
+    while ((pMatch = pRegex.exec(footerMatch[1])) !== null) {
+      indices.add(parseInt(pMatch[1], 10))
+    }
+  }
+
   return Array.from(indices).sort((a, b) => a - b)
 }
 
 function matchProductsToResponse(response: string, productList: any[]): any[] {
   const byIndex = extractProductIndices(response)
-  if (byIndex.length > 0) {
-    return productList.filter(p => byIndex.includes(p.index))
-  }
-
-  const responseLower = response.toLowerCase()
-  const matched: any[] = []
-  const seen = new Set<number>()
-
-  for (const p of productList) {
-    const nameWords = p.name.toLowerCase().split(' ').filter((w: string) => w.length > 3)
-    const matchCount = nameWords.filter((w: string) => responseLower.includes(w)).length
-    if (nameWords.length > 0 && matchCount / nameWords.length >= 0.3) {
-      if (!seen.has(p.index)) {
-        seen.add(p.index)
-        matched.push(p)
-      }
-    }
-  }
-
-  return matched
+  if (byIndex.length === 0) return []
+  return productList.filter(p => byIndex.includes(p.index))
 }

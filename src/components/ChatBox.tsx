@@ -170,16 +170,9 @@ function stripProductIndex(text: string): string {
 
 function findProductByBoldText(text: string, products: any[]): any | null {
   const idxMatch = text.match(/\[P(\d+)\]/i)
-  if (idxMatch) {
-    const idx = parseInt(idxMatch[1], 10)
-    const found = products.find(p => p.index === idx)
-    if (found) return found
-  }
-  const clean = text.replace(/\s*-\s*.*$/, '').replace(/\[P\d+\]/i, '').trim().toLowerCase()
-  return products.find(p =>
-    p.name.toLowerCase().includes(clean) ||
-    clean.includes(p.name.toLowerCase().split(' ').slice(0, 3).join(' '))
-  ) || null
+  if (!idxMatch) return null
+  const idx = parseInt(idxMatch[1], 10)
+  return products.find(p => p.index === idx) || null
 }
 
 function escapeHtml(s: string) {
@@ -187,6 +180,7 @@ function escapeHtml(s: string) {
 }
 
 function renderLineText(text: string) {
+  if (/^Índices:/i.test(text.trim())) return ''
   const cleaned = text.replace(/\s*\[P\d+\]\s*/gi, '')
   const escaped = escapeHtml(cleaned)
   return escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
@@ -255,6 +249,13 @@ function MessageWithProducts({ content, products }: { content: string; products:
   return (
     <div className="space-y-3">
       <div className="space-y-2">{elements}</div>
+      {products.length > 0 && (
+        <div className="space-y-3 mt-4">
+          {products.slice(0, 10).map((p, i) => (
+            <InlineProductCard key={'card-' + i} product={p} compact />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
