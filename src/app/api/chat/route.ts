@@ -39,12 +39,12 @@ REGRAS:
 ANÁLISE OBRIGATÓRIA DE REQUISITOS:
 Você receberá MUITOS produtos (até 500). Analise todos, mas na resposta:
 - Mostre apenas os TOP 5-10 melhores produtos que atendem os requisitos
-- Para cada produto aprovado, escreva o NOME DO PRODUTO em negrito, depois uma breve análise de por que ele atende
+- Para cada produto aprovado, escreva o NOME DO PRODUTO em negrito seguido do número de índice entre colchetes — ex: **RTX 3060 12GB [P1]**, depois uma breve análise de por que ele atende
 - Se menos de 5 produtos atenderem, mostre apenas os que atendem
 - Se NENHUM atender, avise honestamente e mostre os 3 mais próximos
 
 Exemplo de formato para CADA produto aprovado:
-**RTX 3060 12GB - Kabum**
+**RTX 3060 12GB [P1]**
 Preço: de R$ 2.499 por R$ 1.999 (-20% OFF)
 🎯 Atende porque: tem RTX 3060 que roda GTA 5 no Ultra, frete grátis, dentro do orçamento
 
@@ -203,7 +203,7 @@ Total de ${productList.length} produtos reais encontrados:
 
 ${productContext}
 
-Analise todos. Mostre APENAS os TOP 5-10 melhores que atendem. Para cada um: nome em negrito, preço, desconto, e por que atende.`
+Analise todos. Mostre APENAS os TOP 5-10 melhores que atendem. Para cada um: nome em negrito com o índice [P#], preço, desconto, e por que atende.`
       })
 
       const response = await callAi(messages, SYSTEM_PROMPT) || 'Desculpe, não consegui processar sua solicitação no momento. Tente novamente mais tarde.'
@@ -306,7 +306,7 @@ Total de ${productList.length} produtos reais encontrados (mostrando os 200 melh
 
 ${productContext}
 
-Analise todos. Mostre APENAS os TOP 5-10 melhores que atendem os requisitos. Para cada um: nome em negrito, preço, desconto, e por que atende.`
+Analise todos. Mostre APENAS os TOP 5-10 melhores que atendem os requisitos. Para cada um: nome em negrito com o índice [P#], preço, desconto, e por que atende.`
   })
 
   const response = await callAi(msgs, SYSTEM_PROMPT) || 'Desculpe, não consegui processar sua solicitação no momento.'

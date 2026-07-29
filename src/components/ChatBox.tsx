@@ -117,8 +117,18 @@ function InlineProductCard({ product }: { product: any }) {
   )
 }
 
+function stripProductIndex(text: string): string {
+  return text.replace(/\s*\[P\d+\]\s*/i, '').trim()
+}
+
 function findProductByBoldText(text: string, products: any[]): any | null {
-  const clean = text.replace(/\s*-\s*.*$/, '').trim().toLowerCase()
+  const idxMatch = text.match(/\[P(\d+)\]/i)
+  if (idxMatch) {
+    const idx = parseInt(idxMatch[1], 10)
+    const found = products.find(p => p.index === idx)
+    if (found) return found
+  }
+  const clean = text.replace(/\s*-\s*.*$/, '').replace(/\[P\d+\]/i, '').trim().toLowerCase()
   return products.find(p =>
     p.name.toLowerCase().includes(clean) ||
     clean.includes(p.name.toLowerCase().split(' ').slice(0, 3).join(' '))
@@ -130,7 +140,8 @@ function escapeHtml(s: string) {
 }
 
 function renderLineText(text: string) {
-  const escaped = escapeHtml(text)
+  const cleaned = text.replace(/\s*\[P\d+\]\s*/gi, '')
+  const escaped = escapeHtml(cleaned)
   return escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
 }
 
@@ -163,12 +174,12 @@ function MessageWithProducts({ content, products }: { content: string; products:
           if (p) {
             lineChildren.push(
               <span key={partKey++} className="inline-flex items-center gap-1.5">
-                <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="font-bold text-inherit hover:underline cursor-pointer">{inner}</a>
+                <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="font-bold text-inherit hover:underline cursor-pointer">{stripProductIndex(inner)}</a>
                 <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-2.5 py-0.5 bg-[#1a1a1a] text-white text-[11px] font-medium rounded-md hover:bg-gray-700 transition-colors no-underline">Comprar</a>
               </span>
             )
           } else {
-            lineChildren.push(<strong key={partKey++}>{inner}</strong>)
+            lineChildren.push(<strong key={partKey++}>{stripProductIndex(inner)}</strong>)
           }
         } else {
           lineChildren.push(<Fragment key={partKey++}>{part}</Fragment>)
