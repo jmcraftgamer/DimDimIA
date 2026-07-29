@@ -53,21 +53,65 @@ function renderLine(trimmed: string) {
   return <p className="text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: renderInline(trimmed) }} />
 }
 
-function ProductImage({ product }: { product: any }) {
+function InlineProductCard({ product }: { product: any }) {
+  const discount = product.oldPrice && product.oldPrice > product.price
+    ? Math.round((1 - product.price / product.oldPrice) * 100)
+    : 0
+
+  const [imgSrc, setImgSrc] = useState<string | null>(
+    product.imageUrl?.startsWith('http') ? `/api/image-proxy?url=${encodeURIComponent(product.imageUrl)}` : null
+  )
+
   return (
-    <div className="bg-white rounded-xl border border-[#e5e5e5] overflow-hidden">
-      <a href={product.productUrl} target="_blank" rel="noopener noreferrer" className="block">
-        <div className="relative w-full h-48 bg-gray-50">
-          <div className="absolute inset-0 flex items-center justify-center">
-            <svg className="w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <div className="flex gap-3 bg-white rounded-xl border border-[#e5e5e5] overflow-hidden p-3">
+      <a href={product.productUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 no-underline">
+        <div className="w-24 h-24 bg-gray-50 rounded-lg overflow-hidden flex items-center justify-center border border-gray-100">
+          {imgSrc ? (
+            <img
+              src={imgSrc}
+              alt={product.name}
+              className="w-full h-full object-contain p-1"
+              onError={() => {
+                if (imgSrc.includes('/api/image-proxy')) {
+                  setImgSrc(product.imageUrl)
+                } else {
+                  setImgSrc(null)
+                }
+              }}
+            />
+          ) : (
+            <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <rect x="3" y="5" width="18" height="14" rx="2" strokeWidth="1" />
               <circle cx="12" cy="12" r="4" strokeWidth="1" />
             </svg>
-          </div>
-          {product.imageUrl?.startsWith('http') && (
-            <img src={'/api/image-proxy?url=' + encodeURIComponent(product.imageUrl)} alt={product.name} className="absolute inset-0 w-full h-full object-contain p-2" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
           )}
         </div>
+      </a>
+      <div className="flex-1 min-w-0 space-y-1">
+        <a href={product.productUrl} target="_blank" rel="noopener noreferrer" className="no-underline group">
+          <p className="text-sm font-semibold leading-tight text-[#1a1a1a] line-clamp-2 group-hover:underline">{product.name}</p>
+        </a>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-base font-bold text-[#1a1a1a]">R$ {Number(product.price).toFixed(2)}</span>
+          {product.oldPrice > 0 && (
+            <>
+              <span className="text-xs text-gray-400 line-through">R$ {Number(product.oldPrice).toFixed(2)}</span>
+              <span className="text-xs font-semibold text-green-600">-{discount}%</span>
+            </>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500">{product.store}</span>
+          {product.freeShipping && <span className="text-xs text-green-600 font-medium">Frete Grátis</span>}
+        </div>
+      </div>
+      <a
+        href={product.productUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="shrink-0 self-center px-3 py-1.5 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg hover:bg-gray-800 transition-colors no-underline text-center"
+      >
+        Comprar
       </a>
     </div>
   )
@@ -134,7 +178,7 @@ function MessageWithProducts({ content, products }: { content: string; products:
       elements.push(
         <div key={key++} className="space-y-2">
           <p className="text-sm leading-relaxed">{lineChildren}</p>
-          <ProductImage product={matchedProduct} />
+          <InlineProductCard product={matchedProduct} />
         </div>
       )
     } else if (trimmed.startsWith('## ')) {
@@ -155,27 +199,7 @@ function MessageWithProducts({ content, products }: { content: string; products:
       <div className="space-y-2">{elements}</div>
       <div className="space-y-3">
         {products.slice(0, 10).map((p, i) => (
-          <div key={'card-' + i} className="bg-white rounded-xl border border-[#e5e5e5] overflow-hidden">
-            <div className="p-4 space-y-3">
-              <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="no-underline group">
-                <h3 className="font-bold text-sm leading-tight text-[#1a1a1a] group-hover:underline">{p.name}</h3>
-              </a>
-              <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="block no-underline">
-                <div className="relative w-full h-40 bg-gray-50 rounded-lg overflow-hidden border border-gray-100">
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <svg className="w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <rect x="3" y="5" width="18" height="14" rx="2" strokeWidth="1" />
-                      <circle cx="12" cy="12" r="4" strokeWidth="1" />
-                    </svg>
-                  </div>
-                  {p.imageUrl?.startsWith('http') && (
-                    <img src={'/api/image-proxy?url=' + encodeURIComponent(p.imageUrl)} alt={p.name} className="absolute inset-0 w-full h-full object-contain p-2" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
-                  )}
-                </div>
-              </a>
-              <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="block w-full py-2 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg hover:bg-gray-800 transition-colors text-center no-underline">Comprar</a>
-            </div>
-          </div>
+          <InlineProductCard key={'card-' + i} product={p} />
         ))}
       </div>
     </div>
