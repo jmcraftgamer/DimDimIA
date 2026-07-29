@@ -1,86 +1,155 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { searchProducts } from '../../../lib/scrapers'
 import { chatWithCloudflare } from '../../../lib/cloudflare-ai'
 import { checkAiRateLimit, AI_LIMIT_MESSAGE } from '../../../lib/rate-limit'
-import { extractSearchParams, SearchParams } from '../../../lib/query-extractor'
+import { extractSearchParams } from '../../../lib/query-extractor'
 import { chatWithModel, MODELS } from '../../../lib/openhauter'
+import { scrapeKabum } from '../../../lib/scrapers/kabum'
 import prisma from '../../../lib/prisma'
+import axios from 'axios'
 
-const SYSTEM_PROMPT = `Você é a DimDimIA, uma assistente ESPECIALIZADA em encontrar as MELHORES promoções e descontos em lojas brasileiras.
+const MAX_PRODUCTS_TO_SHOW = 8
 
-CAPACIDADES:
-- Você tem acesso APENAS aos dados REAIS de produtos fornecidos abaixo
-- Você NUNCA deve inventar ou mencionar produtos que não estão na lista
-- Você ANALISA e COMPARA os resultados para recomendar o melhor custo-benefício
+interface SelectedProduct {
+  index: number
+  name: string
+  price: number
+  oldPrice: number
+  discountPercent: number
+  store: string
+  imageUrl: string
+  productUrl: string
+  freeShipping: boolean
+  sellerName: string
+  rating: number | null
+  totalSales: number | null
+  description: string
+}
+
+async function searchMLApi(query: string): Promise<SelectedProduct[]> {
+  try {
+    const { data } = await axios.get('https://api.mercadolibre.com/sites/MLB/search', {
+      params: { q: query, limit: 50 },
+      timeout: 10000,
+    })
+    if (!data?.results?.length) return []
+
+    return data.results
+      .filter((item: any) => {
+        const original = item.original_price ?? item.sale_price?.regular_amount ?? 0
+        return original > item.price && item.price > 0 && item.thumbnail?.startsWith('http')
+      })
+      .map((item: any, i: number) => {
+        const original = item.original_price ?? item.sale_price?.regular_amount ?? 0
+        const discount = Math.round((1 - item.price / original) * 100)
+        return {
+          index: i + 1,
+          name: item.title,
+          price: item.price,
+          oldPrice: original,
+          discountPercent: discount,
+          store: 'Mercado Livre',
+          imageUrl: item.thumbnail?.replace(/-I\.jpg/, '-O.jpg') || '',
+          productUrl: item.permalink || '',
+          freeShipping: item.shipping?.free_shipping ?? false,
+          sellerName: item.seller?.nickname ?? '',
+          rating: item.reviews?.average ?? null,
+          totalSales: item.sold_quantity ?? null,
+          description: item.title,
+        }
+      })
+  } catch {
+    return []
+  }
+}
+
+async function searchKabumProducts(query: string): Promise<SelectedProduct[]> {
+  try {
+    const raw = await scrapeKabum(query)
+    return raw
+      .filter(p => p.imageUrl?.startsWith('http') && p.productUrl?.startsWith('http') && p.oldPrice && p.oldPrice > p.price)
+      .map((p, i) => {
+        const discount = p.oldPrice ? Math.round((1 - p.price / p.oldPrice) * 100) : 0
+        return {
+          index: i + 1,
+          name: p.name,
+          price: p.price,
+          oldPrice: p.oldPrice || 0,
+          discountPercent: discount,
+          store: 'Kabum',
+          imageUrl: p.imageUrl,
+          productUrl: p.productUrl,
+          freeShipping: p.freeShipping || false,
+          sellerName: p.sellerName || '',
+          rating: p.rating || null,
+          totalSales: p.totalSales || null,
+          description: p.description || p.name,
+        }
+      })
+  } catch {
+    return []
+  }
+}
+
+function selectTopProducts(mlProducts: SelectedProduct[], kabumProducts: SelectedProduct[]): SelectedProduct[] {
+  const all = [...mlProducts, ...kabumProducts]
+  if (all.length === 0) return []
+
+  const seen = new Set<string>()
+  const unique: SelectedProduct[] = []
+
+  for (const p of all) {
+    const key = p.productUrl || p.name
+    if (!seen.has(key)) {
+      seen.add(key)
+      unique.push(p)
+    }
+  }
+
+  unique.sort((a, b) => {
+    if (b.discountPercent !== a.discountPercent) return b.discountPercent - a.discountPercent
+    if ((b.totalSales || 0) !== (a.totalSales || 0)) return (b.totalSales || 0) - (a.totalSales || 0)
+    return a.price - b.price
+  })
+
+  const top = unique.slice(0, MAX_PRODUCTS_TO_SHOW)
+  top.forEach((p, i) => { p.index = i + 1 })
+  return top
+}
+
+const SYSTEM_PROMPT = `Você é a DimDimIA, uma assistente ESPECIALIZADA em encontrar as MELHORES promoções em lojas brasileiras.
+
+Os produtos abaixo SÃO REAIS e foram buscados agora na internet. Analise-os e escreva uma resposta seguindo o formato abaixo.
 
 REGRAS:
-- Responda SEMPRE em português brasileiro, de forma natural e conversacional
-- NUNCA finja resultados — use APENAS os produtos da lista abaixo
-- NUNCA mencione um produto que não está na lista
-- Se nenhum produto da lista atender, avise honestamente
+- Responda em português brasileiro, natural e conversacional
+- Use APENAS os produtos listados - NÃO invente nem mencione outros
+- NÃO fale de produtos de categorias diferentes do que o usuário pediu
+- Se nenhum produto atender, avise honestamente
 
-COMO ANALISAR:
-1. Analise CADA produto contra o que o usuário pediu
-2. Só inclua produtos que REALMENTE correspondem
-3. Se o usuário pediu algo específico (ex: monitor), NÃO fale de outro tipo (ex: piso)
+FORMATO OBRIGATÓRIO:
 
-FORMATO OBRIGATÓRIO — siga exatamente este modelo:
+1. Parágrafo de abertura confirmando o que o usuário quer.
+Ex: "Você quer [produto] certo? Eu vou te passar uma lista com os melhores que encontrei na internet com ótimos preços."
 
-Parágrafo de abertura: diga o que o usuário quer e pergunte se prefere algo diferente.
-Exemplo: "Você quer exemplos de monitores baratos certo? Eu vou te passar uma lista completa dos Melhores Monitores na internet com ótimos preços. Ou você prefere que eu busque outra coisa específica?"
+2. Linha: "Aqui está a lista dos melhores [produto] que encontrei:"
 
-Linha: "Aqui está a lista dos melhores [produto] para [finalidade]:"
-
-Para CADA produto aprovado, use este formato:
-
+3. Para CADA produto, use:
 **NÚMERO. Nome do Produto [P#]**
-(imagem aparecerá automaticamente aqui)
-Descrição detalhada: principais especificações, por que é bom para o que o usuário pediu. Preço de R$ X por R$ Y (-Z% OFF).
+Descrição detalhada: especificações, por que é bom para o que o usuário pediu. Preço de R$ X por R$ Y (-Z% OFF).
 
-Exemplo real:
+Exemplo:
 **1. Monitor Samsung Odyssey G30 [P1]**
-Descrição detalhada: Monitor 27 polegadas, 165Hz, 1ms, Full HD. Excelente para jogos, imagem nítida e taxa de atualização alta. Preço de R$ 1.999 por R$ 1.399 (-30% OFF).
-
-**2. Monitor LG UltraGear [P3]**
-Descrição detalhada: Monitor 24 polegadas, 144Hz, IPS, 1ms. Ótimo custo-benefício, cores vivas e ótimo para jogos competitivos. Preço de R$ 1.499 por R$ 1.199 (-20% OFF).
+Descrição detalhada: Monitor 27 polegadas, 165Hz, 1ms, Full HD. Excelente para jogos, imagem nítida. Preço de R$ 1.999 por R$ 1.399 (-30% OFF).
 
 Importante:
 - Use lista numerada (1., 2., 3.)
-- O nome do produto sempre em negrito com [P#] no final
-- Após o nome, escreva "Descrição detalhada:" com specs e preço
-- NÃO use ##, ###, 🎯, ✅, ❌ ou outros marcadores
-- Se NENHUM produto atender, avise sem inventar
+- O nome em negrito com [P#] no final
+- "Descrição detalhada:" com specs relevantes e preço
+- NÃO use ##, ###, 🎯, ✅, ❌`
 
-No final da sua resposta, adicione UMA LINHA exata com os índices que você usou:
-Índices: P1,P3,P5
-(apenas os números separados por vírgula, sem espaços extras, sem texto antes ou depois)`
-
-function buildProductList(scrapedProducts: any[]) {
-  return scrapedProducts.map((p, i) => {
-    const discount = p.oldPrice && p.oldPrice > p.price
-      ? Math.round((1 - p.price / p.oldPrice) * 100)
-      : 0
-    return {
-      index: i + 1,
-      name: p.name,
-      price: p.price,
-      oldPrice: p.oldPrice || 0,
-      discountPercent: discount,
-      store: p.store,
-      imageUrl: p.imageUrl,
-      productUrl: p.productUrl,
-      freeShipping: p.freeShipping || false,
-      sellerName: p.sellerName || '',
-      rating: p.rating || null,
-      totalSales: p.totalSales || null,
-      description: p.description || p.name,
-    }
-  })
-}
-
-async function callAi(messages: { role: string; content: string }[], systemPrompt: string): Promise<string | null> {
-  const cf = await chatWithCloudflare(messages, systemPrompt)
+function callAi(messages: { role: string; content: string }[], systemPrompt: string): Promise<string | null> {
+  const cf = chatWithCloudflare(messages, systemPrompt)
   if (cf) return cf
   return chatWithModel(MODELS.CHAT_ASSISTANT, messages, systemPrompt)
 }
@@ -117,61 +186,13 @@ export async function POST(request: NextRequest) {
       lowercaseMsg.includes('dica') || lowercaseMsg.includes('qual') ||
       lowercaseMsg.includes('onde')
 
-    let scrapedProducts: any[] = []
-    let productList: any[] = []
-    let extractedParams: SearchParams | null = null
-
-    if (isProductRequest) {
-      if (session?.user?.email) {
-        const user = await prisma.user.findUnique({ where: { email: session.user.email } })
-        if (user) {
-          const rateLimit = await checkAiRateLimit(user.id)
-          if (!rateLimit.allowed) {
-            scrapedProducts = await searchProducts(message)
-            productList = buildProductList(scrapedProducts.slice(0, 10))
-            await prisma.chatMessage.create({ data: { content: message, role: 'user', userId: user.id } })
-            const body = productList.length > 0
-              ? { response: AI_LIMIT_MESSAGE, products: productList }
-              : { response: AI_LIMIT_MESSAGE, products: [] }
-            if (isStream) return streamResponse([{ event: 'result', data: body }, { event: 'done', data: {} }])
-            return NextResponse.json(body)
-          }
-        }
-      }
-
-      if (isStream) {
-        const encoder = new TextEncoder()
-        const stream = new ReadableStream({
-          async start(controller) {
-            const send = (event: string, data: any) => {
-              controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
-            }
-            try {
-              await processChatStream(message, history, session, send, controller, encoder)
-            } catch (err: any) {
-              console.error('Chat stream error:', err)
-              send('error', { message: 'Erro interno do servidor' })
-            } finally {
-              send('done', {})
-              controller.close()
-            }
-          },
-        })
-        return new Response(stream, {
-          headers: {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-          },
-        })
-      }
-
-      extractedParams = await extractSearchParams(message)
-      const searchQuery = extractedParams?.productName || message
-      console.log(`[Chat] Query: "${searchQuery}"`)
-
-      scrapedProducts = await searchProducts(searchQuery)
-      productList = buildProductList(scrapedProducts)
+    if (!isProductRequest) {
+      const messages = history || []
+      messages.push({ role: 'user', content: message })
+      const response = await callAi(messages, SYSTEM_PROMPT) || 'Desculpe, não consegui processar sua solicitação.'
+      const body = { response, products: [] }
+      if (isStream) return streamResponse([{ event: 'result', data: body }, { event: 'done', data: {} }])
+      return NextResponse.json(body)
     }
 
     if (session?.user?.email) {
@@ -180,87 +201,41 @@ export async function POST(request: NextRequest) {
         const rateLimit = await checkAiRateLimit(user.id)
         if (!rateLimit.allowed) {
           await prisma.chatMessage.create({ data: { content: message, role: 'user', userId: user.id } })
-          const body = productList.length > 0
-            ? { response: AI_LIMIT_MESSAGE, products: productList }
-            : { response: AI_LIMIT_MESSAGE, products: [] }
+          const body = { response: AI_LIMIT_MESSAGE, products: [] }
           if (isStream) return streamResponse([{ event: 'result', data: body }, { event: 'done', data: {} }])
           return NextResponse.json(body)
         }
       }
     }
 
-    if (productList.length > 0) {
-      const requirements = extractedParams?.requirements
-        ? `${extractedParams.productName}${extractedParams.brand ? `, ${extractedParams.brand}` : ''}${extractedParams.specs.length > 0 ? `, ${extractedParams.specs.join(', ')}` : ''}${extractedParams.maxPrice ? `, até R$ ${extractedParams.maxPrice}` : ''}`
-        : ''
-
-      const productContext = productList.map(p =>
-        `P${p.index} | ${p.name} | ${p.store} | R$ ${p.price.toFixed(2)}${p.oldPrice > 0 ? ` de R$ ${p.oldPrice.toFixed(2)} (-${p.discountPercent}%)` : ''}${p.freeShipping ? ' | Frete Grátis' : ''}${p.rating ? ` | ${p.rating}/5` : ''}${p.sellerName ? ` | ${p.sellerName}` : ''} | ${p.productUrl}`
-      ).join('\n')
-
-      const messages = history || []
-      messages.push({
-        role: 'user',
-        content: `O usuário perguntou: "${message}"
-
-REQUISITOS: ${requirements || 'Nenhum específico'}
-
-Total de ${productList.length} produtos reais encontrados:
-
-${productContext}
-
-Analise todos. Mostre APENAS os TOP 5-10 melhores que atendem. Para cada um: nome em negrito com o índice [P#]. No final, adicione a linha "Índices: P1,P3,P5" com os números que você usou.`
+    if (isStream) {
+      const encoder = new TextEncoder()
+      const stream = new ReadableStream({
+        async start(controller) {
+          const send = (event: string, data: any) => {
+            controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
+          }
+          try {
+            await processChatStream(message, history, session, send)
+          } catch (err: any) {
+            console.error('Chat stream error:', err)
+            send('error', { message: 'Erro interno do servidor' })
+          } finally {
+            send('done', {})
+            controller.close()
+          }
+        },
       })
- 
-      const response = await callAi(messages, SYSTEM_PROMPT) || 'Desculpe, não consegui processar sua solicitação no momento. Tente novamente mais tarde.'
-
-      if (session?.user?.email) {
-        const user = await prisma.user.findUnique({ where: { email: session.user.email } })
-        if (user) {
-          await prisma.chatMessage.create({ data: { content: message, role: 'user', userId: user.id } })
-          await prisma.chatMessage.create({ data: { content: response, role: 'assistant', userId: user.id } })
-        }
-      }
-
-      const matchedProducts = matchProductsToResponse(response, productList)
-      const body = { response, products: matchedProducts.length > 0 ? matchedProducts : productList.slice(0, 10) }
-      if (isStream) return streamResponse([{ event: 'result', data: body }, { event: 'done', data: {} }])
-      return NextResponse.json(body)
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      })
     }
 
-    if (isProductRequest && scrapedProducts.length === 0) {
-      const messages = history || []
-      messages.push({ role: 'user', content: message })
-      const response = await callAi(messages, SYSTEM_PROMPT) || 'Desculpe, não consegui processar sua solicitação no momento.'
-
-      if (session?.user?.email) {
-        const user = await prisma.user.findUnique({ where: { email: session.user.email } })
-        if (user) {
-          await prisma.chatMessage.create({ data: { content: message, role: 'user', userId: user.id } })
-          await prisma.chatMessage.create({ data: { content: response, role: 'assistant', userId: user.id } })
-        }
-      }
-
-      const body = { response, products: [] }
-      if (isStream) return streamResponse([{ event: 'result', data: body }, { event: 'done', data: {} }])
-      return NextResponse.json(body)
-    }
-
-    const messages = history || []
-    messages.push({ role: 'user', content: message })
-    const response = await callAi(messages, SYSTEM_PROMPT) || 'Desculpe, não consegui processar sua solicitação no momento.'
-
-    if (session?.user?.email) {
-      const user = await prisma.user.findUnique({ where: { email: session.user.email } })
-      if (user) {
-        await prisma.chatMessage.create({ data: { content: message, role: 'user', userId: user.id } })
-        await prisma.chatMessage.create({ data: { content: response, role: 'assistant', userId: user.id } })
-      }
-    }
-
-    const body = { response, products: [] }
-    if (isStream) return streamResponse([{ event: 'result', data: body }, { event: 'done', data: {} }])
-    return NextResponse.json(body)
+    return handleNonStream(message, history, session)
   } catch (error: any) {
     console.error('Chat API error:', error)
     const body = { error: 'Erro interno do servidor' }
@@ -269,36 +244,34 @@ Analise todos. Mostre APENAS os TOP 5-10 melhores que atendem. Para cada um: nom
   }
 }
 
-async function processChatStream(
-  message: string,
-  history: any[],
-  session: any,
-  send: (event: string, data: any) => void,
-  controller: ReadableStreamDefaultController,
-  encoder: TextEncoder
-) {
-  send('status', { phase: 'thinking' })
-  await sleep(800)
+async function searchAndSelectProducts(query: string): Promise<SelectedProduct[]> {
+  const [mlProducts, kabumProducts] = await Promise.all([
+    searchMLApi(query),
+    searchKabumProducts(query),
+  ])
+  return selectTopProducts(mlProducts, kabumProducts)
+}
 
+async function handleNonStream(message: string, history: any[], session: any) {
   const extractedParams = await extractSearchParams(message)
   const searchQuery = extractedParams?.productName || message
-  console.log(`[Chat] Query extraída: "${extractedParams?.productName}"`)
 
-  send('status', { phase: 'searching' })
+  const selectedProducts = await searchAndSelectProducts(searchQuery)
 
-  const rawProducts = await searchProducts(searchQuery)
-  const productList = buildProductList(rawProducts)
+  if (session?.user?.email) {
+    await prisma.chatMessage.create({ data: { content: message, role: 'user', userId: session.user.email } }).catch(() => {})
+  }
 
-  send('product_count', { total: productList.length })
+  if (selectedProducts.length === 0) {
+    const msgs = history || []
+    msgs.push({ role: 'user', content: message })
+    const response = await callAi(msgs, SYSTEM_PROMPT) || 'Desculpe, não consegui encontrar produtos para sua busca.'
+    const body = { response, products: [] }
+    return NextResponse.json(body)
+  }
 
-  send('status', { phase: 'evaluating' })
-  await sleep(500)
-
-  const requirements = extractedParams?.requirements
-    ? `${extractedParams.productName}${extractedParams.brand ? `, ${extractedParams.brand}` : ''}${extractedParams.specs.length > 0 ? `, ${extractedParams.specs.join(', ')}` : ''}${extractedParams.maxPrice ? `, até R$ ${extractedParams.maxPrice}` : ''}`
-    : ''
-
-  const productContext = productList.slice(0, 200).map(p =>
+  const requirements = extractedParams?.requirements || ''
+  const productContext = selectedProducts.map(p =>
     `P${p.index} | ${p.name} | ${p.store} | R$ ${p.price.toFixed(2)}${p.oldPrice > 0 ? ` de R$ ${p.oldPrice.toFixed(2)} (-${p.discountPercent}%)` : ''}${p.freeShipping ? ' | Frete Grátis' : ''}${p.rating ? ` | ${p.rating}/5` : ''} | ${p.productUrl}`
   ).join('\n')
 
@@ -306,29 +279,74 @@ async function processChatStream(
   msgs.push({
     role: 'user',
     content: `O usuário perguntou: "${message}"
-
-REQUISITOS: ${requirements || 'Nenhum específico'}
-
-Total de ${productList.length} produtos reais encontrados (mostrando os 200 melhores):
-
+REQUISITOS: ${requirements || 'Nenhum'}
+PRODUTOS ENCONTRADOS (${selectedProducts.length}):
 ${productContext}
-
-Analise todos. Mostre APENAS os TOP 5-10 melhores que atendem os requisitos. Para cada um: nome em negrito com o índice [P#]. No final, adicione a linha "Índices: P1,P3,P5" com os números que você usou.`
+Analise APENAS esses produtos acima. Descreva cada um no formato solicitado.`
   })
 
-  const response = await callAi(msgs, SYSTEM_PROMPT) || 'Desculpe, não consegui processar sua solicitação no momento.'
-
-  const matchedProducts = matchProductsToResponse(response, productList)
+  const response = await callAi(msgs, SYSTEM_PROMPT) || 'Desculpe, não consegui processar sua solicitação.'
 
   if (session?.user?.email) {
-    const user = await prisma.user.findUnique({ where: { email: session.user.email } })
-    if (user) {
-      await prisma.chatMessage.create({ data: { content: message, role: 'user', userId: user.id } })
-      await prisma.chatMessage.create({ data: { content: response, role: 'assistant', userId: user.id } })
-    }
+    await prisma.chatMessage.create({ data: { content: response, role: 'assistant', userId: session.user.email } }).catch(() => {})
   }
 
-  send('result', { response, products: matchedProducts.length > 0 ? matchedProducts : productList.slice(0, 10) })
+  const body = { response, products: selectedProducts }
+  return NextResponse.json(body)
+}
+
+async function processChatStream(
+  message: string,
+  history: any[],
+  session: any,
+  send: (event: string, data: any) => void
+) {
+  send('status', { phase: 'thinking' })
+  await sleep(800)
+
+  const extractedParams = await extractSearchParams(message)
+  const searchQuery = extractedParams?.productName || message
+
+  send('status', { phase: 'searching' })
+
+  const selectedProducts = await searchAndSelectProducts(searchQuery)
+
+  send('product_count', { total: selectedProducts.length })
+
+  if (selectedProducts.length === 0) {
+    const msgs = history || []
+    msgs.push({ role: 'user', content: message })
+    const response = await callAi(msgs, SYSTEM_PROMPT) || 'Desculpe, não encontrei produtos para sua busca.'
+    send('result', { response, products: [] })
+    return
+  }
+
+  send('status', { phase: 'evaluating' })
+  await sleep(500)
+
+  const requirements = extractedParams?.requirements || ''
+  const productContext = selectedProducts.map(p =>
+    `P${p.index} | ${p.name} | ${p.store} | R$ ${p.price.toFixed(2)}${p.oldPrice > 0 ? ` de R$ ${p.oldPrice.toFixed(2)} (-${p.discountPercent}%)` : ''}${p.freeShipping ? ' | Frete Grátis' : ''}${p.rating ? ` | ${p.rating}/5` : ''} | ${p.productUrl}`
+  ).join('\n')
+
+  const msgs = history || []
+  msgs.push({
+    role: 'user',
+    content: `O usuário perguntou: "${message}"
+REQUISITOS: ${requirements || 'Nenhum'}
+PRODUTOS ENCONTRADOS (${selectedProducts.length}):
+${productContext}
+Analise APENAS esses produtos acima. Descreva cada um no formato solicitado.`
+  })
+
+  const response = await callAi(msgs, SYSTEM_PROMPT) || 'Desculpe, não consegui processar sua solicitação.'
+
+  if (session?.user?.email) {
+    await prisma.chatMessage.create({ data: { content: message, role: 'user', userId: session.user.email } }).catch(() => {})
+    await prisma.chatMessage.create({ data: { content: response, role: 'assistant', userId: session.user.email } }).catch(() => {})
+  }
+
+  send('result', { response, products: selectedProducts })
 }
 
 function streamResponse(events: { event: string; data: any }[]) {
@@ -344,31 +362,4 @@ function streamResponse(events: { event: string; data: any }[]) {
 
 function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms))
-}
-
-function extractProductIndices(response: string): number[] {
-  const indices = new Set<number>()
-
-  const bracketRegex = /\[P(\d+)\]/g
-  let match
-  while ((match = bracketRegex.exec(response)) !== null) {
-    indices.add(parseInt(match[1], 10))
-  }
-
-  const footerMatch = response.match(/Índices:\s*((?:P\d+[,\s]*)+)/i)
-  if (footerMatch) {
-    const pRegex = /P(\d+)/gi
-    let pMatch
-    while ((pMatch = pRegex.exec(footerMatch[1])) !== null) {
-      indices.add(parseInt(pMatch[1], 10))
-    }
-  }
-
-  return Array.from(indices).sort((a, b) => a - b)
-}
-
-function matchProductsToResponse(response: string, productList: any[]): any[] {
-  const byIndex = extractProductIndices(response)
-  if (byIndex.length === 0) return []
-  return productList.filter(p => byIndex.includes(p.index))
 }
