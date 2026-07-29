@@ -74,10 +74,40 @@ function parseSearchCard($el: cheerio.Cheerio<any>): ScrapedProduct | null {
   }
 }
 
+async function scrapeMLApiByQuery(query: string): Promise<ScrapedProduct[]> {
+  try {
+    const { data } = await axios.get('https://api.mercadolibre.com/sites/MLB/search', {
+      params: { q: query, limit: 50 },
+      timeout: 10000,
+    })
+    if (!data?.results?.length) return []
+
+    return data.results.map((item: any) => ({
+      name: item.title,
+      description: item.title,
+      price: item.price,
+      oldPrice: item.original_price || 0,
+      store: 'Mercado Livre',
+      imageUrl: item.thumbnail?.replace(/-I\.jpg/, '-O.jpg') ?? '',
+      productUrl: item.permalink ?? '',
+      freeShipping: item.shipping?.free_shipping ?? false,
+      sellerName: item.seller?.nickname ?? '',
+      rating: item.reviews?.average ?? null,
+      totalSales: item.sold_quantity ?? null,
+      inStock: true,
+    }))
+  } catch {
+    return []
+  }
+}
+
 export async function scrapeMercadoLivre(query: string, skipApify?: boolean): Promise<ScrapedProduct[]> {
   if (!query || query.trim() === '') {
     return scrapeMLByCategory('geral')
   }
+
+  const apiProducts = await scrapeMLApiByQuery(query)
+  if (apiProducts.length >= 5) return apiProducts
 
   const products: ScrapedProduct[] = []
   const seen = new Set<string>()

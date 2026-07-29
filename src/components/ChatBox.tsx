@@ -28,27 +28,36 @@ function BanknoteIcon({ size = 'sm' }: { size?: 'sm' | 'md' }) {
   )
 }
 
-function stripMarkdown(text: string): string {
-  return text
-    .replace(/\*\*(.*?)\*\*/g, '$1')
-    .replace(/\*(.*?)\*/g, '$1')
-    .replace(/^## /gm, '')
-    .replace(/^### /gm, '')
-    .replace(/^[\u{1F3AF}\u{2705}\u{274C}]/gmu, '')
-}
-
 function TypewriterMessage({ content }: { content: string }) {
-  const clean = stripMarkdown(content)
-  const lines = clean.split('\n')
+  const lines = content.split('\n')
   return (
     <div className="space-y-0.5">
       {lines.map((line, i) => {
         const trimmed = line.trim()
-        if (!trimmed) return <div key={i} className="h-1" />
-        return <p key={i} className="text-sm leading-relaxed typewriter-line" style={{ animationDelay: `${i * 0.04}s` }}>{trimmed}</p>
+        return (
+          <div key={i} className="typewriter-line" style={{ animationDelay: `${i * 0.04}s` }}>
+            {renderLine(trimmed)}
+          </div>
+        )
       })}
     </div>
   )
+}
+
+function renderLine(trimmed: string) {
+  if (!trimmed) return <div className="h-1" />
+  if (trimmed.startsWith('## ')) return <h2 className="text-lg font-bold mt-3 mb-1">{trimmed.slice(3)}</h2>
+  if (trimmed.startsWith('### ')) return <h3 className="text-md font-semibold mt-2 mb-1">{trimmed.slice(4)}</h3>
+  if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) return <p className="ml-3 text-sm leading-relaxed">{trimmed.slice(2)}</p>
+  return <p className="text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: renderInline(trimmed) }} />
+}
+
+function renderInline(text: string): string {
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+  return escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
 }
 
 function MicIcon({ isRecording }: { isRecording: boolean }) {
