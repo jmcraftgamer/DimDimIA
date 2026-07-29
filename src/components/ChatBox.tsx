@@ -427,11 +427,12 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
                       <h3 className="font-bold text-base leading-tight text-[#1a1a1a]">{p.name}</h3>
 
                       <div className="relative w-full h-48 bg-gray-50 rounded-lg overflow-hidden border border-gray-100">
-                        {!showFallback && p.imageUrl ? (
+                        {!showFallback && p.imageUrl && !p.imageUrl.includes('placeholder') ? (
                           <img
                             src={p.imageUrl}
                             alt={p.name}
                             className="w-full h-full object-contain p-3"
+                            referrerPolicy="no-referrer"
                             onError={() => setFailedImages(prev => new Set(prev).add(p.productUrl || p.name + i))}
                           />
                         ) : (
