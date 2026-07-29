@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, Fragment } from 'react'
 import { ChatMessage, PRESET_QUERIES } from '../types'
 import ChatLoading from './ChatLoading'
 
@@ -23,7 +23,7 @@ function BanknoteIcon({ size = 'sm' }: { size?: 'sm' | 'md' }) {
       <path d="M22 9c-2 0-3-1.5-3-3.5" />
       <path d="M2 15c2 0 3 1.5 3 3.5" />
       <path d="M22 15c-2 0-3 1.5-3 3.5" />
-      <text x="12" y="12" textAnchor="middle" dy=".35em" fontSize="12" fontWeight="bold" fill="currentColor" stroke="none">$</text>
+      <text x="12" y="13" textAnchor="middle" dy=".35em" fontSize="12" fontWeight="bold" fill="currentColor" stroke="none">$</text>
     </svg>
   )
 }
@@ -53,6 +53,26 @@ function renderLine(trimmed: string) {
   return <p className="text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: renderInline(trimmed) }} />
 }
 
+function ProductImage({ product }: { product: any }) {
+  return (
+    <div className="bg-white rounded-xl border border-[#e5e5e5] overflow-hidden">
+      <a href={product.productUrl} target="_blank" rel="noopener noreferrer" className="block">
+        <div className="relative w-full h-48 bg-gray-50">
+          <div className="absolute inset-0 flex items-center justify-center">
+            <svg className="w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <rect x="3" y="5" width="18" height="14" rx="2" strokeWidth="1" />
+              <circle cx="12" cy="12" r="4" strokeWidth="1" />
+            </svg>
+          </div>
+          {product.imageUrl?.startsWith('http') && (
+            <img src={'/api/image-proxy?url=' + encodeURIComponent(product.imageUrl)} alt={product.name} className="absolute inset-0 w-full h-full object-contain p-2" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+          )}
+        </div>
+      </a>
+    </div>
+  )
+}
+
 function findProductByBoldText(text: string, products: any[]): any | null {
   const clean = text.replace(/\s*-\s*.*$/, '').trim().toLowerCase()
   return products.find(p =>
@@ -61,39 +81,81 @@ function findProductByBoldText(text: string, products: any[]): any | null {
   ) || null
 }
 
+function escapeHtml(s: string) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function renderLineText(text: string) {
+  const escaped = escapeHtml(text)
+  return escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+}
+
 function MessageWithProducts({ content, products }: { content: string; products: any[] }) {
   if (!products?.length) return <TypewriterMessage content={content} />
 
-  let html = content
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
+  const lines = content.split('\n')
+  const elements: React.ReactNode[] = []
+  let key = 0
 
-  html = html.replace(/\*\*(.+?)\*\*/g, (_m, inner) => {
-    const match = findProductByBoldText(inner, products)
-    if (match) {
-      return `<a href="${match.productUrl}" target="_blank" rel="noopener noreferrer" class="font-bold underline text-inherit hover:text-gray-600 cursor-pointer">${inner}</a>`
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim()
+    if (!trimmed) {
+      elements.push(<div key={key++} className="h-1" />)
+      continue
     }
-    return `<strong>${inner}</strong>`
-  })
 
-  const lines = html.split('\n')
-  const renderedLines = lines.map(line => {
-    const t = line.trim()
-    if (!t) return '<div class="h-1"></div>'
-    if (t.startsWith('## ')) return `<h2 class="text-lg font-bold mt-3 mb-1">${t.slice(3)}</h2>`
-    if (t.startsWith('### ')) return `<h3 class="text-md font-semibold mt-2 mb-1">${t.slice(4)}</h3>`
-    if (t.startsWith('- ') || t.startsWith('* ')) return `<p class="ml-3 text-sm leading-relaxed">${t.slice(2)}</p>`
-    if (t.startsWith('🎯') || t.startsWith('✅') || t.startsWith('❌')) return `<p class="text-sm leading-relaxed">${t}</p>`
-    return `<p class="text-sm leading-relaxed">${t}</p>`
-  }).join('\n')
+    const boldMatch = trimmed.match(/\*\*(.+?)\*\*/)
+    const matchedProduct = boldMatch ? findProductByBoldText(boldMatch[1], products) : null
+
+    if (matchedProduct) {
+      const parts = trimmed.split(/(\*\*[^*]+\*\*)/g)
+      const lineChildren: React.ReactNode[] = []
+      let partKey = 0
+
+      for (const part of parts) {
+        if (part.startsWith('**') && part.endsWith('**')) {
+          const inner = part.slice(2, -2)
+          const p = findProductByBoldText(inner, products)
+          if (p) {
+            lineChildren.push(
+              <span key={partKey++} className="inline-flex items-center gap-1.5">
+                <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="font-bold text-inherit hover:underline cursor-pointer">{inner}</a>
+                <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-2.5 py-0.5 bg-[#1a1a1a] text-white text-[11px] font-medium rounded-md hover:bg-gray-700 transition-colors no-underline">Comprar</a>
+              </span>
+            )
+          } else {
+            lineChildren.push(<strong key={partKey++}>{inner}</strong>)
+          }
+        } else {
+          lineChildren.push(<Fragment key={partKey++}>{part}</Fragment>)
+        }
+      }
+
+      elements.push(
+        <div key={key++} className="space-y-2">
+          <p className="text-sm leading-relaxed">{lineChildren}</p>
+          <ProductImage product={matchedProduct} />
+        </div>
+      )
+    } else if (trimmed.startsWith('## ')) {
+      elements.push(<h2 key={key++} className="text-lg font-bold mt-3 mb-1">{trimmed.slice(3)}</h2>)
+    } else if (trimmed.startsWith('### ')) {
+      elements.push(<h3 key={key++} className="text-md font-semibold mt-2 mb-1">{trimmed.slice(4)}</h3>)
+    } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+      elements.push(<p key={key++} className="ml-3 text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: renderLineText(trimmed.slice(2)) }} />)
+    } else if (trimmed.startsWith('🎯') || trimmed.startsWith('✅') || trimmed.startsWith('❌')) {
+      elements.push(<p key={key++} className="text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: renderLineText(trimmed) }} />)
+    } else {
+      elements.push(<p key={key++} className="text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: renderLineText(trimmed) }} />)
+    }
+  }
 
   return (
     <div className="space-y-3">
-      <div className="space-y-0.5" dangerouslySetInnerHTML={{ __html: renderedLines }} />
+      <div className="space-y-2">{elements}</div>
       <div className="space-y-3">
         {products.slice(0, 10).map((p, i) => (
-          <div key={i} className="bg-white rounded-xl border border-[#e5e5e5] overflow-hidden">
+          <div key={'card-' + i} className="bg-white rounded-xl border border-[#e5e5e5] overflow-hidden">
             <div className="p-4 space-y-3">
               <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="no-underline group">
                 <h3 className="font-bold text-sm leading-tight text-[#1a1a1a] group-hover:underline">{p.name}</h3>

@@ -15,29 +15,8 @@ function BanknoteLoadingIcon() {
         <path d="M22 9c-2 0-3-1.5-3-3.5" />
         <path d="M2 15c2 0 3 1.5 3 3.5" />
         <path d="M22 15c-2 0-3 1.5-3 3.5" />
-        <text x="12" y="12" textAnchor="middle" dy=".35em" fontSize="12" fontWeight="bold" fill="currentColor" stroke="none">$</text>
+        <text x="12" y="13" textAnchor="middle" dy=".35em" fontSize="12" fontWeight="bold" fill="currentColor" stroke="none">$</text>
       </svg>
-    </div>
-  )
-}
-
-function FlyingNotes() {
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {[...Array(6)].map((_, i) => (
-        <div
-          key={i}
-          className="absolute text-yellow-500 text-lg animate-float-note"
-          style={{
-            left: `${20 + Math.random() * 60}%`,
-            animationDelay: `${i * 0.4}s`,
-            animationDuration: `${1.5 + Math.random()}s`,
-            opacity: 0.7,
-          }}
-        >
-          💰
-        </div>
-      ))}
     </div>
   )
 }
@@ -69,10 +48,9 @@ function StatusText({ phase }: { phase: string }) {
 export default function ChatLoading({ phase }: ChatLoadingProps) {
   return (
     <div className="fade-in flex justify-start mb-4">
-      <div className="flex items-start gap-3">
-        <div className="relative">
+      <div className="flex items-start gap-1.5">
+        <div className="mt-0.5">
           <BanknoteLoadingIcon />
-          {phase === 'searching' && <FlyingNotes />}
         </div>
         <div className="bg-transparent rounded-2xl rounded-bl-md px-4 py-3">
           <StatusText phase={phase} />
