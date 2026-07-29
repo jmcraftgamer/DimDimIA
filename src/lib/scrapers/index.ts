@@ -80,11 +80,22 @@ export async function scrapeSpecificStore(store: string, query: string): Promise
   return scraper(query)
 }
 
+const QUERY_EXPANSIONS: Record<string, string[]> = {
+  pcs: ['pc', 'computador', 'pc gamer', 'computador completo'],
+  pc: ['computador', 'pc gamer', 'desktop'],
+}
+
 export async function searchProducts(query: string): Promise<ScrapedProduct[]> {
   const queries = [query]
-  const words = query.split(' ').filter(w => w.length > 3)
-  if (words.length > 1) {
-    queries.push(words.join(' '))
+
+  const lower = query.toLowerCase().trim()
+  if (QUERY_EXPANSIONS[lower]) {
+    queries.push(...QUERY_EXPANSIONS[lower])
+  } else {
+    const words = query.split(' ').filter(w => w.length >= 2)
+    if (words.length > 1) {
+      queries.push(words.join(' '))
+    }
   }
 
   const allProducts: ScrapedProduct[] = []

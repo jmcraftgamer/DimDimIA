@@ -10,45 +10,37 @@ import prisma from '../../../lib/prisma'
 const SYSTEM_PROMPT = `Você é a DimDimIA, uma assistente ESPECIALIZADA em encontrar as MELHORES promoções e descontos em lojas brasileiras.
 
 SUAS CAPACIDADES:
-- Você tem acesso a dados REAIS de produtos de várias lojas (Mercado Livre, Amazon, Kabum, AliExpress, Shopee, Pichau, Terabyte)
-- Você recebe resultados de busca REAIS sempre que o usuário pede produtos
-- Você ANALISA e COMPARA os resultados para recomendar o melhor custo-benefício
+- Você tem acesso APENAS aos dados REAIS de produtos fornecidos abaixo
+- Você NUNCA deve inventar, sugerir ou mencionar produtos que não estão na lista fornecida
+- Você ANALISA e COMPARA os resultados fornecidos para recomendar o melhor custo-benefício
 
 COMO ANALISAR PRODUTOS:
-1. O usuário vai enviar REQUISITOS específicos (marca, specs, preço, performance)
-2. Você deve analisar CADA produto individualmente contra esses requisitos
-3. Só inclua produtos que REALMENTE atendem os requisitos
-4. Se o usuário pediu marca X, só mostre produtos da marca X
-5. Se o usuário pediu preço até X, só mostre produtos até X (ou muito próximos)
-6. Se o usuário pediu especificações (DDR5, 32GB, SSD), verifique se o produto tem
+1. Analise CADA produto individualmente contra o que o usuário pediu
+2. Só inclua produtos que REALMENTE correspondem ao que o usuário busca
+3. Se o usuário pediu um tipo específico (ex: monitor), NÃO mencione produtos de outro tipo (ex: piso)
 
 FORMATO DE RESPOSTA COM PRODUTOS:
-- Explique por que cada produto atende os requisitos do usuário
+- Explique por que cada produto atende
 - Destaque o desconto real: "de R$ X por R$ Y (Z% OFF)"
-- Mencione frete grátis, avaliações quando disponíveis
-- Compare produtos similares entre lojas diferentes
-- Recomende o MELHOR custo-benefício explicando o porquê
-- Se NENHUM produto atender, avise honestamente e mostre os mais próximos
+- Recomende o MELHOR custo-benefício
 
 REGRAS:
 - Responda SEMPRE em português brasileiro
-- Seja natural e conversacional, mas INFORMATIVA
-- NUNCA finja resultados — use apenas os dados reais que recebeu
-- Se não encontrar produtos relevantes, avise honestamente
+- NUNCA finja resultados — use APENAS os produtos reais da lista abaixo
+- NUNCA mencione um produto que não está na lista
+- Se não encontrar produtos relevantes na lista, avise honestamente
 
-ANÁLISE OBRIGATÓRIA DE REQUISITOS:
-Você receberá MUITOS produtos (até 500). Analise todos, mas na resposta:
-- Mostre apenas os TOP 5-10 melhores produtos que atendem os requisitos
-- Para cada produto aprovado, escreva o NOME DO PRODUTO em negrito seguido do número de índice entre colchetes — ex: **RTX 3060 12GB [P1]**, depois uma breve análise de por que ele atende
-- Se menos de 5 produtos atenderem, mostre apenas os que atendem
-- Se NENHUM atender, avise honestamente e mostre os 3 mais próximos
+ANÁLISE OBRIGATÓRIA:
+Da lista de produtos fornecida, selecione APENAS os TOP 5-10 que melhor atendem.
+Para cada um: escreva o NOME em negrito seguido de [P#] — ex: **Monitor Samsung [P1]**.
+Depois uma breve análise de por que atende.
 
-Exemplo de formato para CADA produto aprovado:
-**RTX 3060 12GB [P1]**
+Exemplo:
+**Monitor Samsung Odyssey [P1]**
 Preço: de R$ 2.499 por R$ 1.999 (-20% OFF)
-🎯 Atende porque: tem RTX 3060 que roda GTA 5 no Ultra, frete grátis, dentro do orçamento
+🎯 Ideal para o que você pediu: monitor bom e barato, frete grátis
 
-Faça uma análise sincera. Não invente informações. Use APENAS os dados recebidos.`
+Se NENHUM produto da lista atender, avise: "Não encontrei produtos que atendam exatamente na busca atual."`
 
 function buildProductList(scrapedProducts: any[]) {
   return scrapedProducts.map((p, i) => {
@@ -216,10 +208,7 @@ Analise todos. Mostre APENAS os TOP 5-10 melhores que atendem. Para cada um: nom
         }
       }
 
-      const mentionedIndices = extractProductIndices(response)
-      const matchedProducts = mentionedIndices.length > 0
-        ? productList.filter(p => mentionedIndices.includes(p.index))
-        : []
+      const matchedProducts = matchProductsToResponse(response, productList)
       const body = { response, products: matchedProducts.length > 0 ? matchedProducts : productList.slice(0, 10) }
       if (isStream) return streamResponse([{ event: 'result', data: body }, { event: 'done', data: {} }])
       return NextResponse.json(body)
@@ -315,10 +304,7 @@ Analise todos. Mostre APENAS os TOP 5-10 melhores que atendem os requisitos. Par
 
   const response = await callAi(msgs, SYSTEM_PROMPT) || 'Desculpe, não consegui processar sua solicitação no momento.'
 
-  const mentionedIndices = extractProductIndices(response)
-  const matchedProducts = mentionedIndices.length > 0
-    ? productList.filter(p => mentionedIndices.includes(p.index))
-    : []
+  const matchedProducts = matchProductsToResponse(response, productList)
 
   if (session?.user?.email) {
     const user = await prisma.user.findUnique({ where: { email: session.user.email } })
@@ -354,4 +340,28 @@ function extractProductIndices(response: string): number[] {
     indices.add(parseInt(match[1], 10))
   }
   return Array.from(indices).sort((a, b) => a - b)
+}
+
+function matchProductsToResponse(response: string, productList: any[]): any[] {
+  const byIndex = extractProductIndices(response)
+  if (byIndex.length > 0) {
+    return productList.filter(p => byIndex.includes(p.index))
+  }
+
+  const responseLower = response.toLowerCase()
+  const matched: any[] = []
+  const seen = new Set<number>()
+
+  for (const p of productList) {
+    const nameWords = p.name.toLowerCase().split(' ').filter((w: string) => w.length > 3)
+    const matchCount = nameWords.filter((w: string) => responseLower.includes(w)).length
+    if (nameWords.length > 0 && matchCount / nameWords.length >= 0.3) {
+      if (!seen.has(p.index)) {
+        seen.add(p.index)
+        matched.push(p)
+      }
+    }
+  }
+
+  return matched
 }
