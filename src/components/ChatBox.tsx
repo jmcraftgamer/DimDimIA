@@ -423,18 +423,22 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
                   <div key={i} className="bg-white rounded-xl border border-[#e5e5e5] overflow-hidden hover:shadow-md transition-shadow product-card">
                     <div className="p-4 space-y-3">
                       <h3 className="font-bold text-base leading-tight text-[#1a1a1a]">{p.name}</h3>
-                      <div className="relative w-full h-48 bg-gray-50 rounded-lg overflow-hidden border border-gray-100 flex items-center justify-center">
-                        <img
-                          src={p.imageUrl || ''}
-                          alt={p.name}
-                          className="w-full h-full object-contain p-3 absolute inset-0"
-                          referrerPolicy="no-referrer"
-                          onError={(e) => { const t = e.target as HTMLImageElement; t.style.display = 'none' }}
-                        />
-                        <svg className="w-12 h-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <rect x="3" y="5" width="18" height="14" rx="2" strokeWidth="1" />
-                          <circle cx="12" cy="12" r="4" strokeWidth="1" />
-                        </svg>
+                      <div className="relative w-full h-48 bg-gray-50 rounded-lg overflow-hidden border border-gray-100">
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <svg className="w-12 h-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <rect x="3" y="5" width="18" height="14" rx="2" strokeWidth="1" />
+                            <circle cx="12" cy="12" r="4" strokeWidth="1" />
+                          </svg>
+                        </div>
+                        {p.imageUrl?.startsWith('http') && (
+                          <img
+                            src={p.imageUrl}
+                            alt={p.name}
+                            className="absolute inset-0 w-full h-full object-contain p-3"
+                            referrerPolicy="no-referrer"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                          />
+                        )}
                         {p.discountPercent > 0 && (
                           <span className="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-md">-{p.discountPercent}%</span>
                         )}
