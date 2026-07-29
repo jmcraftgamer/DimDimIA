@@ -408,7 +408,7 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
         <div key={msg.id} className={`fade-in flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
           <div className={`flex items-start gap-1 max-w-[88%] ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
             {msg.role === 'assistant' && (
-              <div className="relative shrink-0 text-gray-400" style={{ transform: 'rotate(-8deg)' }}>
+              <div className="relative shrink-0 text-gray-400 mt-1.5" style={{ transform: 'rotate(-8deg)' }}>
                 <BanknoteIcon size="sm" />
               </div>
             )}
