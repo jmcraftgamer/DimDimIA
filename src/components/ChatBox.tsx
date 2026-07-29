@@ -53,43 +53,50 @@ function renderLine(trimmed: string) {
   return <p className="text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: renderInline(trimmed) }} />
 }
 
+function findProductByBoldText(text: string, products: any[]): any | null {
+  const clean = text.replace(/\s*-\s*.*$/, '').trim().toLowerCase()
+  return products.find(p =>
+    p.name.toLowerCase().includes(clean) ||
+    clean.includes(p.name.toLowerCase().split(' ').slice(0, 3).join(' '))
+  ) || null
+}
+
 function MessageWithProducts({ content, products }: { content: string; products: any[] }) {
   if (!products?.length) return <TypewriterMessage content={content} />
 
-  const productMap: Record<string, string> = {}
-  for (const p of products) {
-    const key = p.name.toLowerCase().trim()
-    productMap[key] = p.productUrl
-  }
+  let html = content
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
 
-  function findUrl(text: string): string | null {
-    const t = text.toLowerCase().trim()
-    for (const [name, url] of Object.entries(productMap)) {
-      if (t.includes(name) || name.includes(t)) return url
+  html = html.replace(/\*\*(.+?)\*\*/g, (_m, inner) => {
+    const match = findProductByBoldText(inner, products)
+    if (match) {
+      return `<a href="${match.productUrl}" target="_blank" rel="noopener noreferrer" class="font-bold underline text-inherit hover:text-gray-600 cursor-pointer">${inner}</a>`
     }
-    return null
-  }
+    return `<strong>${inner}</strong>`
+  })
 
-  const parts = content.split(/(\*\*[^*]+\*\*)/g)
-  const html = parts.map((part) => {
-    if (part.startsWith('**') && part.endsWith('**')) {
-      const inner = part.slice(2, -2)
-      const url = findUrl(inner)
-      if (url) return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="font-bold underline text-inherit hover:text-gray-600">${inner}</a>`
-      return `<strong>${inner}</strong>`
-    }
-    return part.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  }).join('')
+  const lines = html.split('\n')
+  const renderedLines = lines.map(line => {
+    const t = line.trim()
+    if (!t) return '<div class="h-1"></div>'
+    if (t.startsWith('## ')) return `<h2 class="text-lg font-bold mt-3 mb-1">${t.slice(3)}</h2>`
+    if (t.startsWith('### ')) return `<h3 class="text-md font-semibold mt-2 mb-1">${t.slice(4)}</h3>`
+    if (t.startsWith('- ') || t.startsWith('* ')) return `<p class="ml-3 text-sm leading-relaxed">${t.slice(2)}</p>`
+    if (t.startsWith('🎯') || t.startsWith('✅') || t.startsWith('❌')) return `<p class="text-sm leading-relaxed">${t}</p>`
+    return `<p class="text-sm leading-relaxed">${t}</p>`
+  }).join('\n')
 
   return (
     <div className="space-y-3">
-      <div className="text-sm leading-relaxed space-y-0.5" dangerouslySetInnerHTML={{ __html: html }} />
+      <div className="space-y-0.5" dangerouslySetInnerHTML={{ __html: renderedLines }} />
       <div className="space-y-3">
         {products.slice(0, 10).map((p, i) => (
           <div key={i} className="bg-white rounded-xl border border-[#e5e5e5] overflow-hidden">
             <div className="p-4 space-y-3">
-              <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="no-underline">
-                <h3 className="font-bold text-sm leading-tight text-[#1a1a1a] hover:underline">{p.name}</h3>
+              <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="no-underline group">
+                <h3 className="font-bold text-sm leading-tight text-[#1a1a1a] group-hover:underline">{p.name}</h3>
               </a>
               <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="block no-underline">
                 <div className="relative w-full h-40 bg-gray-50 rounded-lg overflow-hidden border border-gray-100">
