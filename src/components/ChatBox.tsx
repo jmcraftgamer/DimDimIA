@@ -28,42 +28,27 @@ function BanknoteIcon({ size = 'sm' }: { size?: 'sm' | 'md' }) {
   )
 }
 
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/^## /gm, '')
+    .replace(/^### /gm, '')
+    .replace(/^[\u{1F3AF}\u{2705}\u{274C}]/gmu, '')
+}
+
 function TypewriterMessage({ content }: { content: string }) {
-  const lines = content.split('\n')
+  const clean = stripMarkdown(content)
+  const lines = clean.split('\n')
   return (
     <div className="space-y-0.5">
       {lines.map((line, i) => {
         const trimmed = line.trim()
-        return (
-          <div key={i} className="typewriter-line" style={{ animationDelay: `${i * 0.04}s` }}>
-            {renderLine(trimmed, i)}
-          </div>
-        )
+        if (!trimmed) return <div key={i} className="h-1" />
+        return <p key={i} className="text-sm leading-relaxed typewriter-line" style={{ animationDelay: `${i * 0.04}s` }}>{trimmed}</p>
       })}
     </div>
   )
-}
-
-function renderLine(trimmed: string, i: number) {
-  if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
-    return <p className="font-bold text-sm mt-2">{trimmed.slice(2, -2)}</p>
-  }
-  if (trimmed.startsWith('## ')) {
-    return <h2 className="text-lg font-bold mt-3 mb-1">{trimmed.slice(3)}</h2>
-  }
-  if (trimmed.startsWith('### ')) {
-    return <h3 className="text-md font-semibold mt-2 mb-1">{trimmed.slice(4)}</h3>
-  }
-  if (trimmed.startsWith('🎯') || trimmed.startsWith('✅') || trimmed.startsWith('❌')) {
-    return <p className="text-sm leading-relaxed">{trimmed}</p>
-  }
-  if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-    return <p className="ml-3 text-sm leading-relaxed">{trimmed}</p>
-  }
-  if (trimmed === '') {
-    return <div className="h-1" />
-  }
-  return <p className="text-sm leading-relaxed">{trimmed}</p>
 }
 
 function MicIcon({ isRecording }: { isRecording: boolean }) {
@@ -420,46 +405,28 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
             <div className="pl-[44px] mt-2 space-y-4 w-full max-w-[88%]">
               {msg.products.slice(0, 10).map((p, i) => {
                 return (
-                  <div key={i} className="bg-white rounded-xl border border-[#e5e5e5] overflow-hidden hover:shadow-md transition-shadow product-card">
+                  <div key={i} className="bg-white rounded-xl border border-[#e5e5e5] overflow-hidden hover:shadow-md transition-shadow">
                     <div className="p-4 space-y-3">
                       <h3 className="font-bold text-base leading-tight text-[#1a1a1a]">{p.name}</h3>
-                      <div className="relative w-full h-48 bg-gray-50 rounded-lg overflow-hidden border border-gray-100">
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <svg className="w-12 h-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <rect x="3" y="5" width="18" height="14" rx="2" strokeWidth="1" />
-                            <circle cx="12" cy="12" r="4" strokeWidth="1" />
-                          </svg>
-                        </div>
-                        {p.imageUrl?.startsWith('http') && (
-                          <img
-                            src={p.imageUrl}
-                            alt={p.name}
-                            className="absolute inset-0 w-full h-full object-contain p-3"
-                            referrerPolicy="no-referrer"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                          />
-                        )}
-                        {p.discountPercent > 0 && (
-                          <span className="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-md">-{p.discountPercent}%</span>
-                        )}
-                        {p.freeShipping && (
-                          <span className="absolute top-2 right-2 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-md">Frete Grátis</span>
-                        )}
-                      </div>
-                      {p.description && p.description !== p.name && (
-                        <p className="text-sm text-gray-600 leading-relaxed">{p.description}</p>
-                      )}
-                      <div className="flex items-center justify-between pt-1">
-                        <div className="space-y-0.5">
-                          <p className="text-[11px] text-gray-500 font-medium uppercase">{p.store}</p>
-                          <div className="flex items-baseline gap-1.5 flex-wrap">
-                            <span className="text-lg font-bold text-[#1a1a1a]">R$ {p.price?.toFixed(2)}</span>
-                            {p.oldPrice > 0 && <span className="text-sm text-gray-400 line-through">R$ {p.oldPrice?.toFixed(2)}</span>}
+                      <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="block no-underline">
+                        <div className="relative w-full h-48 bg-gray-50 rounded-lg overflow-hidden border border-gray-100">
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <svg className="w-12 h-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <rect x="3" y="5" width="18" height="14" rx="2" strokeWidth="1" />
+                              <circle cx="12" cy="12" r="4" strokeWidth="1" />
+                            </svg>
                           </div>
-                          {p.rating && <span className="block text-[11px] text-gray-500">★ {p.rating}/5 {p.totalSales ? p.totalSales + ' vendidos' : ''}</span>}
+                          {p.imageUrl?.startsWith('http') && (
+                            <img
+                              src={'/api/image-proxy?url=' + encodeURIComponent(p.imageUrl)}
+                              alt={p.name}
+                              className="absolute inset-0 w-full h-full object-contain p-3"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                            />
+                          )}
                         </div>
-                        <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="px-5 py-2 bg-[#1a1a1a] text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors text-center">Comprar</a>
-                      </div>
+                      </a>
+                      <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="block w-full py-2.5 bg-[#1a1a1a] text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors text-center no-underline">Comprar</a>
                     </div>
                   </div>
                 )
