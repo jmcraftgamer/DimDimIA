@@ -53,7 +53,7 @@ function renderLine(trimmed: string) {
   return <p className="text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: renderInline(trimmed) }} />
 }
 
-function InlineProductCard({ product }: { product: any }) {
+function InlineProductCard({ product, compact }: { product: any; compact?: boolean }) {
   const discount = product.oldPrice && product.oldPrice > product.price
     ? Math.round((1 - product.price / product.oldPrice) * 100)
     : 0
@@ -61,6 +61,53 @@ function InlineProductCard({ product }: { product: any }) {
   const [imgSrc, setImgSrc] = useState<string | null>(
     product.imageUrl?.startsWith('http') ? `/api/image-proxy?url=${encodeURIComponent(product.imageUrl)}` : null
   )
+
+  if (compact) {
+    return (
+      <div className="flex items-center gap-3 bg-white rounded-xl border border-[#e5e5e5] overflow-hidden p-2">
+        <a href={product.productUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 no-underline">
+          <div className="w-32 h-32 bg-gray-50 rounded-lg overflow-hidden flex items-center justify-center border border-gray-100">
+            {imgSrc ? (
+              <img
+                src={imgSrc}
+                alt={product.name}
+                className="w-full h-full object-contain p-1"
+                onError={() => {
+                  if (imgSrc.includes('/api/image-proxy')) {
+                    setImgSrc(product.imageUrl)
+                  } else {
+                    setImgSrc(null)
+                  }
+                }}
+              />
+            ) : (
+              <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <rect x="3" y="5" width="18" height="14" rx="2" strokeWidth="1" />
+                <circle cx="12" cy="12" r="4" strokeWidth="1" />
+              </svg>
+            )}
+          </div>
+        </a>
+        <div className="flex flex-col items-center gap-2 shrink-0">
+          <div className="text-center">
+            {product.oldPrice > 0 && (
+              <p className="text-xs text-gray-400 line-through">R$ {Number(product.oldPrice).toFixed(2)}</p>
+            )}
+            <p className="text-lg font-bold text-[#1a1a1a]">R$ {Number(product.price).toFixed(2)}</p>
+            {discount > 0 && <p className="text-xs font-semibold text-green-600">-{discount}% OFF</p>}
+          </div>
+          <a
+            href={product.productUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-4 py-2 bg-[#1a1a1a] text-white text-xs font-medium rounded-lg hover:bg-gray-800 transition-colors no-underline text-center whitespace-nowrap"
+          >
+            Comprar
+          </a>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex gap-3 bg-white rounded-xl border border-[#e5e5e5] overflow-hidden p-3">
@@ -187,10 +234,10 @@ function MessageWithProducts({ content, products }: { content: string; products:
       }
 
       elements.push(
-        <div key={key++} className="space-y-2">
-          <p className="text-sm leading-relaxed">{lineChildren}</p>
-          <InlineProductCard product={matchedProduct} />
-        </div>
+        <p key={key++} className="text-sm leading-relaxed">{lineChildren}</p>
+      )
+      elements.push(
+        <InlineProductCard key={key++} product={matchedProduct} compact />
       )
     } else if (trimmed.startsWith('## ')) {
       elements.push(<h2 key={key++} className="text-lg font-bold mt-3 mb-1">{trimmed.slice(3)}</h2>)
@@ -208,11 +255,6 @@ function MessageWithProducts({ content, products }: { content: string; products:
   return (
     <div className="space-y-3">
       <div className="space-y-2">{elements}</div>
-      <div className="space-y-3">
-        {products.slice(0, 10).map((p, i) => (
-          <InlineProductCard key={'card-' + i} product={p} />
-        ))}
-      </div>
     </div>
   )
 }
