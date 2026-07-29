@@ -8,18 +8,16 @@ interface ChatLoadingProps {
 
 function BanknoteLoadingIcon() {
   return (
-    <div className="relative w-16 h-16">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
+    <div className="relative w-12 h-12">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full text-gray-400">
         <rect x="2" y="5" width="20" height="14" rx="2" />
         <path d="M2 9c2 0 3-1.5 3-3.5" />
         <path d="M22 9c-2 0-3-1.5-3-3.5" />
         <path d="M2 15c2 0 3 1.5 3 3.5" />
         <path d="M22 15c-2 0-3 1.5-3 3.5" />
-        <circle cx="12" cy="12" r="2.5" />
-        <path d="M12 7.5v9" />
-        <path d="M13.5 9.5h-2.5a1.5 1.5 0 0 0 0 3h3a1.5 1.5 0 0 1 0 3h-3" />
+        <text x="12" y="12" textAnchor="middle" dy=".35em" fontSize="12" fontWeight="bold" fill="currentColor" stroke="none">$</text>
       </svg>
-      <div className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full border-2 border-white shadow" />
+      <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white shadow" />
     </div>
   )
 }

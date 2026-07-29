@@ -15,39 +15,16 @@ interface MessageWithProducts extends ChatMessage {
 }
 
 function BanknoteIcon({ size = 'sm' }: { size?: 'sm' | 'md' }) {
-  const cls = size === 'sm' ? 'w-9 h-9' : 'w-20 h-20'
+  const cls = size === 'sm' ? 'w-7 h-7' : 'w-16 h-16'
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={`${cls} shrink-0`}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={`${cls} shrink-0`}>
       <rect x="2" y="5" width="20" height="14" rx="2" />
       <path d="M2 9c2 0 3-1.5 3-3.5" />
       <path d="M22 9c-2 0-3-1.5-3-3.5" />
       <path d="M2 15c2 0 3 1.5 3 3.5" />
       <path d="M22 15c-2 0-3 1.5-3 3.5" />
-      <circle cx="12" cy="12" r="2.5" />
-      <path d="M12 7.5v9" />
-      <path d="M13.5 9.5h-2.5a1.5 1.5 0 0 0 0 3h3a1.5 1.5 0 0 1 0 3h-3" />
+      <text x="12" y="12" textAnchor="middle" dy=".35em" fontSize="12" fontWeight="bold" fill="currentColor" stroke="none">$</text>
     </svg>
-  )
-}
-
-function FlyingNotesBg({ count = 3 }: { count?: number }) {
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {[...Array(count)].map((_, i) => (
-        <div
-          key={i}
-          className="absolute text-yellow-500 text-base animate-float-note"
-          style={{
-            left: `${20 + Math.random() * 60}%`,
-            top: '50%',
-            animationDelay: `${i * 0.6}s`,
-            animationDuration: `${1.5 + Math.random() * 0.5}s`,
-          }}
-        >
-          💵
-        </div>
-      ))}
-    </div>
   )
 }
 
@@ -431,9 +408,8 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
         <div key={msg.id} className={`fade-in flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
           <div className={`flex items-start gap-2 max-w-[88%] ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
             {msg.role === 'assistant' && (
-              <div className="relative shrink-0">
+              <div className="relative shrink-0 text-gray-400">
                 <BanknoteIcon size="sm" />
-                <FlyingNotesBg count={2} />
               </div>
             )}
             <div className={`rounded-2xl px-4 py-3 ${msg.role === 'user' ? 'bg-[#1a1a1a] text-white rounded-br-md' : 'bg-transparent rounded-bl-md'}`}>
