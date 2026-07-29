@@ -124,7 +124,6 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
   const [loading, setLoading] = useState(false)
   const [loadingPhase, setLoadingPhase] = useState<'thinking' | 'searching' | 'evaluating'>('thinking')
   const [isRecording, setIsRecording] = useState(false)
-  const [failedImages, setFailedImages] = useState<Set<string>>(new Set())
   const recognitionRef = useRef<any>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -420,29 +419,22 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
           {msg.role === 'assistant' && msg.products && msg.products.length > 0 && (
             <div className="pl-[44px] mt-2 space-y-4 w-full max-w-[88%]">
               {msg.products.slice(0, 10).map((p, i) => {
-                const showFallback = failedImages.has(p.productUrl || p.name + i)
                 return (
                   <div key={i} className="bg-white rounded-xl border border-[#e5e5e5] overflow-hidden hover:shadow-md transition-shadow product-card">
                     <div className="p-4 space-y-3">
                       <h3 className="font-bold text-base leading-tight text-[#1a1a1a]">{p.name}</h3>
-
-                      <div className="relative w-full h-48 bg-gray-50 rounded-lg overflow-hidden border border-gray-100">
-                        {!showFallback && p.imageUrl && !p.imageUrl.includes('placeholder') ? (
-                          <img
-                            src={p.imageUrl}
-                            alt={p.name}
-                            className="w-full h-full object-contain p-3"
-                            referrerPolicy="no-referrer"
-                            onError={() => setFailedImages(prev => new Set(prev).add(p.productUrl || p.name + i))}
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <svg className="w-12 h-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <rect x="3" y="5" width="18" height="14" rx="2" strokeWidth="1" />
-                              <circle cx="12" cy="12" r="4" strokeWidth="1" />
-                            </svg>
-                          </div>
-                        )}
+                      <div className="relative w-full h-48 bg-gray-50 rounded-lg overflow-hidden border border-gray-100 flex items-center justify-center">
+                        <img
+                          src={p.imageUrl || ''}
+                          alt={p.name}
+                          className="w-full h-full object-contain p-3 absolute inset-0"
+                          referrerPolicy="no-referrer"
+                          onError={(e) => { const t = e.target as HTMLImageElement; t.style.display = 'none' }}
+                        />
+                        <svg className="w-12 h-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <rect x="3" y="5" width="18" height="14" rx="2" strokeWidth="1" />
+                          <circle cx="12" cy="12" r="4" strokeWidth="1" />
+                        </svg>
                         {p.discountPercent > 0 && (
                           <span className="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-md">-{p.discountPercent}%</span>
                         )}
@@ -450,11 +442,9 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
                           <span className="absolute top-2 right-2 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-md">Frete Grátis</span>
                         )}
                       </div>
-
                       {p.description && p.description !== p.name && (
                         <p className="text-sm text-gray-600 leading-relaxed">{p.description}</p>
                       )}
-
                       <div className="flex items-center justify-between pt-1">
                         <div className="space-y-0.5">
                           <p className="text-[11px] text-gray-500 font-medium uppercase">{p.store}</p>
@@ -462,7 +452,7 @@ export default function ChatBox({ embedded }: ChatBoxProps) {
                             <span className="text-lg font-bold text-[#1a1a1a]">R$ {p.price?.toFixed(2)}</span>
                             {p.oldPrice > 0 && <span className="text-sm text-gray-400 line-through">R$ {p.oldPrice?.toFixed(2)}</span>}
                           </div>
-                          {p.rating && <span className="block text-[11px] text-gray-500">★ {p.rating}/5{p.totalSales ? ` · ${p.totalSales} vendidos` : ''}</span>}
+                          {p.rating && <span className="block text-[11px] text-gray-500">★ {p.rating}/5 {p.totalSales ? p.totalSales + ' vendidos' : ''}</span>}
                         </div>
                         <a href={p.productUrl} target="_blank" rel="noopener noreferrer" className="px-5 py-2 bg-[#1a1a1a] text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors text-center">Comprar</a>
                       </div>
